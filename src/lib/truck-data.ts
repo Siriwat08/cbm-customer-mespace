@@ -30,6 +30,20 @@ export const truckTypes: TruckType[] = [
 
 export const selectedTruck = truckTypes[0];
 
+export function getTruckGrossCBM(truck: TruckType): number {
+  return truck.dimensions.width * truck.dimensions.length * truck.dimensions.height;
+}
+
+export function getTruckObstacleCBM(truck: TruckType): number {
+  return (truck.obstacles || []).reduce((sum, obstacle) => {
+    return sum + (obstacle.width * obstacle.length * obstacle.height) / 1000000;
+  }, 0);
+}
+
+export function getTruckNetCBM(truck: TruckType): number {
+  return Math.max(getTruckGrossCBM(truck) - getTruckObstacleCBM(truck), 0);
+}
+
 export function getTruckByJobKey(jobKey: string): TruckType | undefined {
   return truckTypes.find(t => t.jobKey === jobKey);
 }

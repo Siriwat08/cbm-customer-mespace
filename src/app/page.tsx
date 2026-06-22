@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Image from 'next/image';
-import { selectedTruck, FALLBACK_DIESEL_PRICE, LABOR_COST, CARGO_LIMITS } from '@/lib/truck-data';
+import { selectedTruck, FALLBACK_DIESEL_PRICE, LABOR_COST, CARGO_LIMITS, getTruckGrossCBM, getTruckNetCBM, getTruckObstacleCBM } from '@/lib/truck-data';
 import { performBinPacking } from '@/lib/bin-packing';
 import { formatDisplayDate, formatThaiDateLong, getTodayISO } from '@/lib/date-utils';
 import { getApplicableOilPrice } from '@/lib/oil-price-api';
@@ -69,6 +69,9 @@ export default function Home() {
   // ===== Derived State =====
   const truck = selectedTruck;
   const jobKey = truck.jobKey;
+  const grossTruckCBM = getTruckGrossCBM(truck);
+  const obstacleTruckCBM = getTruckObstacleCBM(truck);
+  const netTruckCBM = getTruckNetCBM(truck);
 
   const validationErrors = useMemo<Record<string, string>>(() => {
     const errors: Record<string, string> = {};
@@ -386,7 +389,7 @@ export default function Home() {
                   </div>
                   <div className="sm:w-1/2 space-y-2">
                     <div className="bg-emerald-50 rounded-lg p-3">
-                      <p className="text-sm text-gray-600">CBM (ปริมาตรสูงสุด)</p>
+                      <p className="text-sm text-gray-600">ขนาดบริการ</p>
                       <p className="text-xl font-bold text-emerald-600">{truck.cbm} ลบ.ม.</p>
                     </div>
                     <div className="bg-orange-50 rounded-lg p-3">
@@ -397,12 +400,25 @@ export default function Home() {
                       <p className="text-sm text-gray-600">ขนาดกระบะ (ก×ย×ส)</p>
                       <p className="text-base font-bold text-blue-600">{truck.dimensions.width}×{truck.dimensions.length}×{truck.dimensions.height} ม.</p>
                     </div>
+                    <div className="bg-cyan-50 rounded-lg p-3">
+                      <p className="text-sm text-gray-600">ปริมาตรภายในตามแบบ</p>
+                      <p className="text-xl font-bold text-cyan-700">{grossTruckCBM.toFixed(2)} ลบ.ม.</p>
+                    </div>
                     {truck.obstacles && truck.obstacles.length > 0 && (
                       <div className="bg-gray-100 rounded-lg p-3">
-                        <p className="text-sm text-gray-600">ซุ้มล้อ</p>
-                        <p className="text-xs font-bold text-gray-700">{truck.obstacles.length} จุด (วางทับไม่ได้)</p>
+                        <p className="text-sm text-gray-600">หลังหักพื้นที่ซุ้มล้อ</p>
+                        <p className="text-xl font-bold text-gray-700">{netTruckCBM.toFixed(2)} ลบ.ม.</p>
+                        <p className="text-xs text-gray-500 mt-1">หักซุ้มล้อ {truck.obstacles.length} จุด รวม {obstacleTruckCBM.toFixed(2)} ลบ.ม.</p>
                       </div>
                     )}
+                  </div>
+                </div>
+                <div className="mt-4 grid sm:grid-cols-2 gap-3">
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-800">
+                    ✅ ระบบกันพื้นที่ซุ้มล้อแล้ว — สินค้าจะไม่ถูกวางทับพื้นที่ซุ้มล้อ
+                  </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                    📦 สามารถวางของเหนือซุ้มล้อได้ หากความสูงของสินค้าเหมาะสม
                   </div>
                 </div>
               </div>
