@@ -553,7 +553,7 @@ export default function Home() {
                         </tr>
                       </thead>
                       <tbody>
-                        {oilPriceHistory.slice(0, showAllHistory ? oilPriceHistory.length : 5).map((item, index) => {
+                        {oilPriceHistory.slice(0, showAllHistory ? oilPriceHistory.length : 10).map((item, index) => {
                           let statusEmoji = '';
                           let statusText = '';
                           let statusColor = '';
@@ -564,17 +564,22 @@ export default function Home() {
                             else if (diff < 0) { statusEmoji = '🔴'; statusText = `▼ ลดลง ${diff.toFixed(2)}`; statusColor = 'text-red-500'; }
                             else { statusEmoji = '⚪'; statusText = '➖ เท่าเดิม'; statusColor = 'text-gray-500'; }
                           }
-                          const isCurrent = index === 0;
+                          // แสดง "ใช้คำนวณ" ที่วันที่ใช้คิดราคาจริง (วันจันทร์ที่อ้างอิงจากกฎจันทร์→พุธ-อังคาร)
+                          const isApplicable = !usingManualPrice && applicableOilInfo.mondayDate === item.date;
+                          const isLatest = index === 0;
                           return (
-                            <tr key={item.date} className={`border-b ${isCurrent ? 'bg-emerald-50 font-bold' : ''}`}>
+                            <tr key={item.date} className={`border-b ${isApplicable ? 'bg-emerald-50 font-bold' : ''}`}>
                               <td className="py-2 px-3 text-left text-gray-700">{formatDisplayDate(item.date)}</td>
                               <td className={`py-2 px-3 text-center text-sm font-medium ${statusColor}`}>{statusEmoji} {statusText}</td>
-                              <td className="py-2 px-3 text-center">{isCurrent && <span className="bg-emerald-600 text-white text-xs px-2 py-0.5 rounded">ใช้คำนวณ</span>}</td>
-                              <td className={`py-2 px-3 text-right ${isCurrent ? 'text-emerald-600 text-lg' : 'text-gray-900'}`}>{item.price.toFixed(2)}</td>
+                              <td className="py-2 px-3 text-center">
+                                {isApplicable && <span className="bg-emerald-600 text-white text-xs px-2 py-0.5 rounded">ใช้คำนวณ</span>}
+                                {!isApplicable && isLatest && <span className="bg-gray-200 text-gray-500 text-xs px-2 py-0.5 rounded">ล่าสุด</span>}
+                              </td>
+                              <td className={`py-2 px-3 text-right ${isApplicable ? 'text-emerald-600 text-lg font-bold' : 'text-gray-900'}`}>{item.price.toFixed(2)}</td>
                             </tr>
                           );
                         })}
-                        {oilPriceHistory.length > 5 && (
+                        {oilPriceHistory.length > 10 && (
                           <tr>
                             <td colSpan={4} className="text-center pt-2">
                               <button onClick={() => setShowAllHistory(!showAllHistory)} className="text-sm text-emerald-600 hover:text-emerald-700 font-medium">
@@ -595,45 +600,10 @@ export default function Home() {
                   </div>
                 )}
 
-                <div className="mt-3 border-t pt-4">
-                  {usingManualPrice && (
-                    <div className="mb-3 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between">
-                      <div className="text-sm text-blue-800">
-                        <span className="font-medium">✏️ ใช้ราคาน้ำมันที่กำหนดเอง:</span> {currentOilPrice.toFixed(2)} บาท/ลิตร
-                        <span className="text-blue-500 text-xs ml-1">(ใช้คำนวณเฉพาะรอบนี้เท่านั้น)</span>
-                      </div>
-                      <button onClick={handleClearManualPrice} className="text-red-500 hover:text-red-700 text-xs font-medium px-2 py-1 border border-red-200 rounded hover:bg-red-50">
-                        ✕ กลับใช้ราคาจากระบบ
-                      </button>
-                    </div>
-                  )}
-                  {!showOilPriceForm ? (
-                    <div className="flex flex-wrap gap-2">
-                      <button onClick={() => { setShowOilPriceForm(true); setManualPrice(''); }} className="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm hover:bg-amber-600 transition">
-                        ✏️ ใส่ราคาน้ำมันดีเซล
-                      </button>
-                      {liveOilPrice !== null && liveOilPrice !== currentOilPrice && (
-                        <button onClick={() => setCurrentOilPrice(liveOilPrice)} className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition">
-                          🔄 ใช้ราคาล่าสุดจากปตท. ({liveOilPrice.toFixed(2)} บาท)
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
-                      <h3 className="font-bold text-amber-800">✏️ ใส่ราคาน้ำมันดีเซล</h3>
-                      <p className="text-xs text-amber-600">⚠️ ราคานี้จะใช้คำนวณเฉพาะรอบนี้เท่านั้น จะไม่ถูกบันทึกลงระบบ</p>
-                      <div>
-                        <label className="text-xs text-gray-600 font-medium">ราคา (บาท/ลิตร)</label>
-                        <input type="number" value={manualPrice} onChange={(e) => setManualPrice(e.target.value)} inputMode="decimal" className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none" placeholder="เช่น 42.25" min="0.01" max="200" step="0.01" />
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={handleApplyManualPrice} disabled={!manualPrice} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 disabled:opacity-50 transition">
-                          ✅ ใช้คำนวณ
-                        </button>
-                        <button onClick={() => setShowOilPriceForm(false)} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300 transition">ยกเลิก</button>
-                      </div>
-                    </div>
-                  )}
+                <div className="mt-3 border-t pt-3">
+                  <p className="text-xs text-gray-400 text-center">
+                    📋 ระบบใช้ราคาน้ำมันวันจันทร์ตามรอบ พุธ–อังคาร ในการคิดค่าขนส่ง
+                  </p>
                 </div>
               </div>
             </section>
