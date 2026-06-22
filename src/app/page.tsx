@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import Image from 'next/image';
 import { selectedTruck, FALLBACK_DIESEL_PRICE, LABOR_COST, CARGO_LIMITS } from '@/lib/truck-data';
 import { performBinPacking } from '@/lib/bin-packing';
-import { formatDisplayDate } from '@/lib/date-utils';
+import { formatDisplayDate, getTodayISO } from '@/lib/date-utils';
+import { getApplicableOilPrice } from '@/lib/oil-price-api';
 import BinPackingVisualization from '@/components/BinPackingVisualization';
 import { useToast } from '@/hooks/use-toast';
 import type { OilPrice, RateData, CargoItem, BinPackingResult } from '@/lib/types';
@@ -74,8 +75,28 @@ export default function Home() {
     return performBinPacking(cargoItems, truck);
   }, [cargoItems, truck]);
 
+  // ===== Applicable Oil Price (กฎจันทร์→พุธ-อังคาร) =====
+  const applicableOilInfo = useMemo(() => {
+    if (usingManualPrice) {
+      // ถ้าผู้ใช้กำหนดราคาเอง ใช้ราคานั้นเลย
+      return {
+        price: currentOilPrice,
+        mondayDate: '',
+        periodStart: '',
+        periodEnd: '',
+        isManual: true,
+      };
+    }
+    const todayISO = getTodayISO();
+    const applicable = getApplicableOilPrice(oilPriceHistory, todayISO);
+    return { ...applicable, isManual: false };
+  }, [oilPriceHistory, currentOilPrice, usingManualPrice]);
+
+  // ราคาน้ำมันที่ใช้คิดค่าขนส่งจริง
+  const applicableOilPrice = applicableOilInfo.price;
+
   const { calculatedPrice, priceDetails } = useMemo(() => {
-    if (!rateData || !distance || currentOilPrice == null) {
+    if (!rateData || !distance || applicableOilPrice == null) {
       return { calculatedPrice: null, priceDetails: null };
     }
 
@@ -92,7 +113,7 @@ export default function Home() {
     let oilIndex = -1;
     for (let i = 0; i < jobData.oil_ranges.length; i++) {
       const range = jobData.oil_ranges[i];
-      if (currentOilPrice >= range.min && currentOilPrice <= range.max) {
+      if (applicableOilPrice >= range.min && applicableOilPrice <= range.max) {
         oilIndex = i;
         break;
       }
@@ -130,7 +151,7 @@ export default function Home() {
     }
 
     return { calculatedPrice: null, priceDetails: null };
-  }, [rateData, jobKey, distance, currentOilPrice]);
+  }, [rateData, jobKey, distance, applicableOilPrice]);
 
   // ===== Data Fetching Effects =====
   const applyOilPriceData = useCallback((data: { price?: number; livePrice?: { price?: number } | null; history?: OilPrice[] }) => {
@@ -623,6 +644,22 @@ export default function Home() {
                 <p className="text-slate-300 text-sm">ประเภทรถ: <span className="font-bold text-white">{truck.name}</span></p>
               </div>
               <div className="p-6 space-y-6">
+                {/* แสดงรอบราคาน้ำมันที่ใช้คิดค่าขนส่ง */}
+                {!applicableOilInfo.isManual && applicableOilInfo.mondayDate && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
+                    <p className="text-blue-800 font-medium">
+                      📅 รอบราคาน้ำมัน: ใช้ราคา จันทร์ที่ {formatDisplayDate(applicableOilInfo.mondayDate)} ({applicableOilPrice.toFixed(2)} บาท)
+                    </p>
+                    <p className="text-blue-600 text-xs mt-0.5">
+                      รอบ {formatDisplayDate(applicableOilInfo.periodStart)} - {formatDisplayDate(applicableOilInfo.periodEnd)} (พุธ - อังคาร)
+                    </p>
+                  </div>
+                )}
+                {applicableOilInfo.isManual && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm">
+                    <p className="text-amber-800 font-medium">✏️ ใช้ราคาน้ำมันที่กำหนดเอง: {applicableOilPrice.toFixed(2)} บาท</p>
+                  </div>
+                )}
                 <div>
                   <label className="block text-gray-700 font-medium mb-2">ประเภทงาน</label>
                   <div className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 bg-gray-50 text-lg text-gray-700">
@@ -698,7 +735,15 @@ export default function Home() {
                         <p>🚛 ประเภทรถ: {truck.name}</p>
                         <p>⛽ ช่วงราคาน้ำมัน: {priceDetails.oilRange}</p>
                         <p>📏 ช่วงระยะทาง: {priceDetails.distRange}</p>
-                        <p>💵 ราคาน้ำมันที่ใช้คำนวณ: {currentOilPrice.toFixed(2)} บาท</p>
+                        <p>💵 ราคาน้ำมันที่ใช้คำนวณ: <span className="font-semibold text-blue-600">{applicableOilPrice.toFixed(2)} บาท</span></p>
+                        {!applicableOilInfo.isManual && applicableOilInfo.mondayDate && (
+                          <p className="text-blue-500">
+                            📅 อ้างอิง: ราคาน้ำมัน จันทร์ที่ {formatDisplayDate(applicableOilInfo.mondayDate)} → ใช้รอบ {formatDisplayDate(applicableOilInfo.periodStart)} - {formatDisplayDate(applicableOilInfo.periodEnd)}
+                          </p>
+                        )}
+                        {applicableOilInfo.isManual && (
+                          <p className="text-amber-500">✏️ ใช้ราคาน้ำมันที่กำหนดเอง</p>
+                        )}
                         {includeLabor && <p>👷 ค่าแรงงานยกสินค้า: ฿{LABOR_COST.toLocaleString()}</p>}
                       </div>
                     </div>
