@@ -1,0 +1,76 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files - NEVER commit .env to GitHub
+.env
+.env.local
+.env.production
+.env.staging
+
+# Allow .env.example to be committed
+!.env.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# logs
+*.log
+dev.log
+dev.out.log
+server.log
+
+# Internal/dev tools - not needed for production
+.claude
+.z-ai-config
+.zscripts/
+/skills/
+/mini-services/
+Caddyfile
+
+# Upload & download directories (user-specific)
+/upload/
+/download/
+
+# Database (contains runtime data)
+/db/
+
+# Worklog (dev-specific)
+worklog.md
+
+# Test & prompt directories
+test
+prompt
+local-*
