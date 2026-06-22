@@ -24,7 +24,7 @@ const CARGO_COLORS = [
 type ViewMode = 'rear' | 'top' | 'side' | '3d';
 
 export default function BinPackingVisualization({ result, truck, cargoItems }: BinPackingVisualizationProps) {
-  const [viewAngle, setViewAngle] = useState<ViewMode>('rear');
+  const [viewAngle, setViewAngle] = useState<ViewMode>('3d');
   const [showLabels, setShowLabels] = useState(true);
 
   // Convert truck dimensions to cm
@@ -451,14 +451,50 @@ export default function BinPackingVisualization({ result, truck, cargoItems }: B
       [project(0, 0, sH), project(0, 0, 0)],
     ];
 
+    const floorFace = [
+      project(0, 0, 0), project(sW, 0, 0),
+      project(sW, sL, 0), project(0, sL, 0),
+    ].map(p => `${p[0] + offsetX},${p[1] + offsetY}`).join(' ');
+
+    const leftWallFace = [
+      project(0, 0, 0), project(0, sL, 0),
+      project(0, sL, sH), project(0, 0, sH),
+    ].map(p => `${p[0] + offsetX},${p[1] + offsetY}`).join(' ');
+
+    const rightWallFace = [
+      project(sW, 0, 0), project(sW, sL, 0),
+      project(sW, sL, sH), project(sW, 0, sH),
+    ].map(p => `${p[0] + offsetX},${p[1] + offsetY}`).join(' ');
+
+    const frontWallFace = [
+      project(0, sL, 0), project(sW, sL, 0),
+      project(sW, sL, sH), project(0, sL, sH),
+    ].map(p => `${p[0] + offsetX},${p[1] + offsetY}`).join(' ');
+
     return (
-      <svg width={svgW} height={svgH} viewBox={`0 0 ${svgW} ${svgH}`} className="mx-auto">
+      <svg width={svgW} height={svgH} viewBox={`0 0 ${svgW} ${svgH}`} className="mx-auto drop-shadow-sm">
+        <defs>
+          <pattern id="isometric-floor-grid" width="18" height="18" patternUnits="userSpaceOnUse">
+            <path d="M 18 0 L 0 0 0 18" fill="none" stroke="#cbd5e1" strokeWidth="0.5" opacity="0.45" />
+          </pattern>
+          <filter id="cargo-soft-shadow" x="-25%" y="-25%" width="150%" height="150%">
+            <feDropShadow dx="2" dy="4" stdDeviation="3" floodColor="#0f172a" floodOpacity="0.18" />
+          </filter>
+        </defs>
+        <rect x="0" y="0" width={svgW} height={svgH} fill="url(#isometric-floor-grid)" opacity="0.55" />
+
+        {/* Truck cargo space: solid floor + translucent walls */}
+        <polygon points={floorFace} fill="#d9c68c" fillOpacity="0.72" stroke="#b59b55" strokeWidth="1.2" />
+        <polygon points={leftWallFace} fill="#e0f2fe" fillOpacity="0.24" stroke="#0284c7" strokeWidth="1.2" />
+        <polygon points={rightWallFace} fill="#dbeafe" fillOpacity="0.18" stroke="#2563eb" strokeWidth="1.2" />
+        <polygon points={frontWallFace} fill="#e2e8f0" fillOpacity="0.28" stroke="#64748b" strokeWidth="1.2" />
+
         {/* Truck wireframe */}
         {truckLines.map(([from, to], idx) => (
           <line key={idx}
             x1={from[0] + offsetX} y1={from[1] + offsetY}
             x2={to[0] + offsetX} y2={to[1] + offsetY}
-            stroke="#94A3B8" strokeWidth="1.5" strokeDasharray="6,3" />
+            stroke="#475569" strokeWidth="1.4" strokeDasharray="5,3" opacity="0.7" />
         ))}
 
         {/* Door face (rear - y=0) - highlighted */}
@@ -506,20 +542,31 @@ export default function BinPackingVisualization({ result, truck, cargoItems }: B
 
           // Label position (center of top face)
           const labelPos = project(x + w / 2, y + l / 2, z + h);
+          const shadowPos = project(x + w / 2, y + l / 2, 0);
+          const shadowRx = Math.max(8, (w + l) * 0.18);
+          const shadowRy = Math.max(4, Math.min(w, l) * 0.08);
 
           return (
-            <g key={idx}>
-              {/* Left face */}
+            <g key={idx} filter="url(#cargo-soft-shadow)">
+              <ellipse
+                cx={shadowPos[0] + offsetX}
+                cy={shadowPos[1] + offsetY + 5}
+                rx={shadowRx}
+                ry={shadowRy}
+                fill="#0f172a"
+                opacity="0.12"
+              />
+              {/* Front face */}
               <polygon points={leftFace}
                 fill={color.fill} fillOpacity={0.8}
                 stroke={color.stroke} strokeWidth="1" />
-              {/* Right face (darker) */}
+              {/* Side face (darker) */}
               <polygon points={rightFace}
-                fill={color.stroke} fillOpacity={0.5}
+                fill={color.stroke} fillOpacity={0.68}
                 stroke={color.stroke} strokeWidth="1" />
               {/* Top face (lighter) */}
               <polygon points={topFace}
-                fill={color.light} fillOpacity={0.7}
+                fill={color.light} fillOpacity={0.88}
                 stroke={color.stroke} strokeWidth="1" />
               {/* Label */}
               {showLabels && w > 15 && l > 15 && (
@@ -659,6 +706,23 @@ export default function BinPackingVisualization({ result, truck, cargoItems }: B
         </div>
       </div>
 
+      {/* Recommendation Card */}
+      <div className={`rounded-xl border p-4 ${result.canFitAll ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+        <div className="flex items-start gap-3">
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${result.canFitAll ? 'bg-emerald-100' : 'bg-red-100'}`}>
+            {result.canFitAll ? '✅' : '⚠️'}
+          </div>
+          <div>
+            <p className={`font-bold ${result.canFitAll ? 'text-emerald-800' : 'text-red-800'}`}>ระบบแนะนำ</p>
+            <p className={`text-sm mt-1 ${result.canFitAll ? 'text-emerald-700' : 'text-red-700'}`}>
+              {result.canFitAll
+                ? `${truck.name} 1 คันเพียงพอสำหรับรายการสินค้านี้`
+                : `สินค้าเกินพื้นที่ ${truck.name} 1 คัน กรุณาลดจำนวนสินค้า หรือให้เจ้าหน้าที่ช่วยตรวจสอบ`}
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Loading Direction Indicator */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
         <p className="text-sm font-medium text-blue-800">
@@ -729,12 +793,12 @@ export default function BinPackingVisualization({ result, truck, cargoItems }: B
             — สินค้าที่อยู่ลึกเข้าไปด้านใน ใส่เข้าไปก่อน
           </p>
           <p>
-            <strong>พื้นที่ใช้ได้จริง:</strong> คูณด้วย usableSpace {truck.usableSpace}% (คิดจากทุกมิติ)
+            <strong>พื้นที่ใช้ได้จริง:</strong> ใช้มิติภายในตาม schematic {truck.dimensions.width}×{truck.dimensions.length}×{truck.dimensions.height} ม. และ usableSpace {truck.usableSpace}%
           </p>
           {hasArches && (
             <p>
-              <strong>ซุ้มล้อ (Wheel Arch):</strong> มี {arches.length} จุด — ระบบจะไม่วางสินค้าทับซุ้มล้อ
-              แต่วางเหนือซุ้มล้อได้ (ที่ความสูง ≥ {arches[0].origH} ซม. จากพื้น)
+              <strong>ซุ้มล้อ (Wheel Arch):</strong> มี {arches.length} จุด — ระบบกันพื้นที่ซุ้มล้อแล้ว จึงไม่วางสินค้าทับซุ้มล้อ
+              และสามารถวางของเหนือซุ้มล้อได้ หากความสูงของสินค้าเหมาะสม (ที่ความสูง ≥ {arches[0].origH} ซม. จากพื้น)
             </p>
           )}
           <p className="text-blue-500 italic">
