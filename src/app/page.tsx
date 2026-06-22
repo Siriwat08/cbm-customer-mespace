@@ -17,6 +17,7 @@ export default function Home() {
   const [currentOilPrice, setCurrentOilPrice] = useState<number>(FALLBACK_DIESEL_PRICE);
   const [oilPriceHistory, setOilPriceHistory] = useState<OilPrice[]>([]);
   const [loadingOil, setLoadingOil] = useState(true);
+  const [liveOilPrice, setLiveOilPrice] = useState<number | null>(null);
 
   // ===== Manual Oil Price Input (session-only) =====
   const [showOilPriceForm, setShowOilPriceForm] = useState(false);
@@ -132,12 +133,15 @@ export default function Home() {
   }, [rateData, jobKey, distance, currentOilPrice]);
 
   // ===== Data Fetching Effects =====
-  const applyOilPriceData = useCallback((data: { price?: number; history?: OilPrice[] }) => {
+  const applyOilPriceData = useCallback((data: { price?: number; livePrice?: { price?: number } | null; history?: OilPrice[] }) => {
     if (data.price !== undefined && data.price !== null) {
       setCurrentOilPrice(data.price);
       if (usingManualPrice) {
         setOriginalOilPrice(data.price);
       }
+    }
+    if (data.livePrice && typeof data.livePrice.price === 'number') {
+      setLiveOilPrice(data.livePrice.price);
     }
     if (data.history && data.history.length > 0) {
       setOilPriceHistory(data.history);
@@ -535,8 +539,8 @@ export default function Home() {
                           if (index < oilPriceHistory.length - 1) {
                             const prevPrice = oilPriceHistory[index + 1].price;
                             const diff = item.price - prevPrice;
-                            if (diff > 0) { statusEmoji = '🟢'; statusText = `▲ +${diff.toFixed(2)}`; statusColor = 'text-emerald-600'; }
-                            else if (diff < 0) { statusEmoji = '🔴'; statusText = `▼ ${diff.toFixed(2)}`; statusColor = 'text-red-500'; }
+                            if (diff > 0) { statusEmoji = '🟢'; statusText = `▲ เพิ่มขึ้น +${diff.toFixed(2)}`; statusColor = 'text-emerald-600'; }
+                            else if (diff < 0) { statusEmoji = '🔴'; statusText = `▼ ลดลง ${diff.toFixed(2)}`; statusColor = 'text-red-500'; }
                             else { statusEmoji = '⚪'; statusText = '➖ เท่าเดิม'; statusColor = 'text-gray-500'; }
                           }
                           const isCurrent = index === 0;
@@ -583,9 +587,16 @@ export default function Home() {
                     </div>
                   )}
                   {!showOilPriceForm ? (
-                    <button onClick={() => { setShowOilPriceForm(true); setManualPrice(''); }} className="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm hover:bg-amber-600 transition">
-                      ✏️ ใส่ราคาน้ำมันดีเซล
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={() => { setShowOilPriceForm(true); setManualPrice(''); }} className="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm hover:bg-amber-600 transition">
+                        ✏️ ใส่ราคาน้ำมันดีเซล
+                      </button>
+                      {liveOilPrice !== null && liveOilPrice !== currentOilPrice && (
+                        <button onClick={() => setCurrentOilPrice(liveOilPrice)} className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition">
+                          🔄 ใช้ราคาล่าสุดจากปตท. ({liveOilPrice.toFixed(2)} บาท)
+                        </button>
+                      )}
+                    </div>
                   ) : (
                     <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
                       <h3 className="font-bold text-amber-800">✏️ ใส่ราคาน้ำมันดีเซล</h3>

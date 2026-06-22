@@ -33,6 +33,7 @@ export async function fetchOilPriceFromMainApp(): Promise<{
   price: number;
   history: OilPriceEntry[];
   source: string;
+  livePrice: { date: string; price: number } | null;
   bangkokToday: string;
 }> {
   const mainAppUrl = process.env.MAIN_APP_API_URL;
@@ -45,6 +46,7 @@ export async function fetchOilPriceFromMainApp(): Promise<{
       price: FALLBACK_DIESEL_PRICE,
       history: [],
       source: 'fallback',
+      livePrice: null,
       bangkokToday,
     };
   }
@@ -71,6 +73,7 @@ export async function fetchOilPriceFromMainApp(): Promise<{
         price: FALLBACK_DIESEL_PRICE,
         history: [],
         source: 'fallback',
+        livePrice: null,
         bangkokToday,
       };
     }
@@ -82,6 +85,7 @@ export async function fetchOilPriceFromMainApp(): Promise<{
       price: typeof data.price === 'number' ? data.price : FALLBACK_DIESEL_PRICE,
       history: Array.isArray(data.history) ? data.history : [],
       source: data.source || 'main-app',
+      livePrice: data.livePrice ?? null,
       bangkokToday: data.bangkokToday || bangkokToday,
     };
   } catch (error) {
@@ -91,6 +95,7 @@ export async function fetchOilPriceFromMainApp(): Promise<{
       price: FALLBACK_DIESEL_PRICE,
       history: [],
       source: 'fallback',
+      livePrice: null,
       bangkokToday,
     };
   }

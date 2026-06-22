@@ -23,6 +23,7 @@ export async function GET() {
         price: 42.25,
         history: [],
         source: 'fallback',
+        livePrice: null,
         bangkokToday,
       },
       { status: 200 }
