@@ -6,6 +6,7 @@ import { selectedTruck, FALLBACK_DIESEL_PRICE, LABOR_COST, CARGO_LIMITS, getTruc
 import { performBinPacking } from '@/lib/bin-packing';
 import { formatDisplayDate, formatThaiDateLong, getTodayISO } from '@/lib/date-utils';
 import { getApplicableOilPrice } from '@/lib/oil-price-api';
+import { getServiceFeeInfo } from '@/lib/holidays';
 import BinPackingVisualization from '@/components/BinPackingVisualization';
 import { useToast } from '@/hooks/use-toast';
 import type { OilPrice, RateData, CargoItem, BinPackingResult } from '@/lib/types';
@@ -117,19 +118,11 @@ export default function Home() {
     };
   }, [oilPriceHistory, todayISO]);
 
-  const isOutOfHoursService = useMemo(() => {
-    if (!serviceTime) return false;
-    const [hourText, minuteText] = serviceTime.split(':');
-    const hour = Number(hourText);
-    const minute = Number(minuteText);
-    if (Number.isNaN(hour) || Number.isNaN(minute)) return false;
-
-    const totalMinutes = hour * 60 + minute;
-    const normalStart = 14 * 60;
-    const normalEnd = 20 * 60;
-    return totalMinutes < normalStart || totalMinutes > normalEnd;
-  }, [serviceTime]);
-
+  const serviceFeeInfo = useMemo(
+    () => getServiceFeeInfo(serviceDate, serviceTime),
+    [serviceDate, serviceTime]
+  );
+  const isOutOfHoursService = serviceFeeInfo.hasFee; // backward-compat for existing JSX
   const serviceTimeFee = isOutOfHoursService ? OUT_OF_HOURS_SERVICE_FEE : 0;
 
   // ===== Applicable Oil Price (กฎจันทร์→พุธ-อังคาร) =====
@@ -743,7 +736,7 @@ export default function Home() {
                     />
                     <p className={`text-xs mt-1 ${isOutOfHoursService ? 'text-amber-600' : 'text-emerald-600'}`}>
                       {isOutOfHoursService
-                        ? `ช่วงนอกเวลา มีค่าบริการเพิ่มเติม ฿${OUT_OF_HOURS_SERVICE_FEE.toLocaleString()}`
+                        ? `${serviceFeeInfo.reason} มีค่าบริการเพิ่มเติม ฿${OUT_OF_HOURS_SERVICE_FEE.toLocaleString()}`
                         : 'ช่วงปกติ 14:00–20:00 น. ไม่มีค่าใช้จ่ายเพิ่มเติม'}
                     </p>
                   </div>
@@ -823,7 +816,7 @@ export default function Home() {
                         <p>⛽ ช่วงราคาน้ำมัน: {priceDetails.oilRange}</p>
                         <p>📏 ช่วงระยะทาง: {priceDetails.distRange}</p>
                         <p>📅 วันที่ใช้บริการ: <span className="font-semibold text-blue-600">{serviceDate ? formatThaiDateLong(serviceDate) : '-'}</span></p>
-                        <p>⏰ เวลาที่ใช้บริการ: <span className="font-semibold text-blue-600">{serviceTime || '-'}</span> {isOutOfHoursService ? '(ช่วงนอกเวลา)' : '(ช่วงปกติ)'}</p>
+                        <p>⏰ เวลาที่ใช้บริการ: <span className="font-semibold text-blue-600">{serviceTime || '-'}</span> {isOutOfHoursService ? `(${serviceFeeInfo.reason})` : '(ช่วงปกติ)'}</p>
                         <p>💵 ราคาน้ำมันที่ใช้คำนวณ: <span className="font-semibold text-blue-600">{applicableOilPrice.toFixed(2)} บาท</span></p>
                         {!applicableOilInfo.isManual && applicableOilInfo.mondayDate && (
                           <p className="text-blue-500">
