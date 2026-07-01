@@ -66,6 +66,86 @@ function isSpaceInside(inner: Space3D, outer: Space3D): boolean {
   );
 }
 
+interface SubSpaceCut {
+  width: number;
+  length: number;
+  height: number;
+  x: number;
+  y: number;
+  z: number;
+}
+
+function pushIfPositive(spaces: Space3D[], cut: SubSpaceCut): void {
+  if (cut.width > 0 && cut.length > 0 && cut.height > 0) {
+    spaces.push(cut);
+  }
+}
+
+/**
+ * แบ่ง space เดียวให้อยู่รอบ ๆ obstacle (Guillotine cut)
+ *
+ * กลยุทธ์:
+ *   - พื้นที่ด้านข้าง/หน้า/หลัง (left/right/front/back) ขยายเต็มความสูงของ space
+ *     (z ตั้งแต่พื้นจนถึงเพดาน) → algorithm จะได้วางของบนพื้นได้เต็มที่
+ *   - พื้นที่ "Top" (เหนือ obstacle) จะจำกัดเฉพาะ footprint ของ obstacle เท่านั้น
+ *     (ไม่ครอบคลุมทั้งคันรถ) → กล่องจะไม่ "ลอย" ในตำแหน่งที่พื้นด้านล่างว่างเปล่า
+ *   - พื้นที่ "Bottom" ปกติไม่เกิด (obstacle ส่วนใหญ่วางบนพื้น z=0) แต่เก็บไว้เผื่อ
+ */
+function splitSpaceByObstacle(space: Space3D, obs: PlacedBox): Space3D[] {
+  const out: Space3D[] = [];
+  const fullHeightBottom = space.z;
+  const fullHeightTop = space.z + space.height;
+
+  // 1) พื้นที่ด้านขวาของ obstacle (แกน X) — เต็มความสูง
+  pushIfPositive(out, {
+    x: obs.x + obs.width, y: space.y, z: fullHeightBottom,
+    width: space.x + space.width - (obs.x + obs.width),
+    length: space.length, height: fullHeightTop - fullHeightBottom,
+  });
+  // 2) พื้นที่ด้านซ้ายของ obstacle (แกน X) — เต็มความสูง
+  pushIfPositive(out, {
+    x: space.x, y: space.y, z: fullHeightBottom,
+    width: obs.x - space.x,
+    length: space.length, height: fullHeightTop - fullHeightBottom,
+  });
+  // 3) พื้นที่ด้านหน้า obstacle (แกน Y — ฝั่งปลายรถ) — เต็มความสูง, เฉพาะแกน X ที่ทับ obstacle
+  pushIfPositive(out, {
+    x: obs.x, y: obs.y + obs.length, z: fullHeightBottom,
+    width: obs.width,
+    length: space.y + space.length - (obs.y + obs.length),
+    height: fullHeightTop - fullHeightBottom,
+  });
+  // 4) พื้นที่ด้านหลัง obstacle (แกน Y — ฝั่งห้องโดยสาร) — เต็มความสูง, เฉพาะแกน X ที่ทับ obstacle
+  pushIfPositive(out, {
+    x: obs.x, y: space.y, z: fullHeightBottom,
+    width: obs.width,
+    length: obs.y - space.y,
+    height: fullHeightTop - fullHeightBottom,
+  });
+  // 5) พื้นที่เหนือ obstacle (แกน Z) — จำกัดเฉพาะ footprint ของ obstacle
+  //    กล่องที่วางตรงนี้จะ "ทับ" บนซุ้มล้อจริง ๆ (ไม่ใช่ลอยเหนือพื้นว่าง)
+  pushIfPositive(out, {
+    x: obs.x, y: obs.y, z: obs.z + obs.height,
+    width: obs.width, length: obs.length,
+    height: space.z + space.height - (obs.z + obs.height),
+  });
+  // 6) พื้นที่ใต้ obstacle (แกน Z — ปกติไม่เกิด)
+  pushIfPositive(out, {
+    x: obs.x, y: obs.y, z: space.z,
+    width: obs.width, length: obs.length,
+    height: obs.z - space.z,
+  });
+  return out;
+}
+
+function spacesOverlap(a: { x: number; y: number; z: number; width: number; length: number; height: number },
+                      b: { x: number; y: number; z: number; width: number; length: number; height: number }): boolean {
+  const oX = a.x < b.x + b.width && a.x + a.width > b.x;
+  const oY = a.y < b.y + b.length && a.y + a.length > b.y;
+  const oZ = a.z < b.z + b.height && a.z + a.height > b.z;
+  return oX && oY && oZ;
+}
+
 /**
  * ประมวลผล obstacles (ซุ้มล้อ) ล่วงหน้า — แปลงพื้นที่รถทั้งหมดให้เป็นช่องว่างที่ไม่ทับซุ้มล้อ
  * ทำงานโดย: สำหรับแต่ละ obstacle จะแบ่งแต่ละ available space ที่ทับซุ้มล้อออกเป็น sub-spaces
@@ -94,113 +174,31 @@ function processObstacles(
   let spaces: Space3D[] = [initialSpace];
 
   // สำหรับแต่ละ obstacle จะแบ่ง spaces ที่ทับมันออก
+  // สำคัญ: filter เฉพาะ obstacles ที่ "ประมวลผลแล้ว" เท่านั้น
+  // (ถ้า filter ทุกตัว จะลบ space ที่กำลังจะถูกตัดในรอบถัดไปทิ้งไปก่อน)
+  const processedObstacles: PlacedBox[] = [];
   for (const obs of placedObstacles) {
     const newSpaces: Space3D[] = [];
-
     for (const space of spaces) {
-      // ตรวจสอบว่า space นี้ทับ obstacle หรือไม่
-      const overlapX = space.x < obs.x + obs.width && space.x + space.width > obs.x;
-      const overlapY = space.y < obs.y + obs.length && space.y + space.length > obs.y;
-      const overlapZ = space.z < obs.z + obs.height && space.z + space.height > obs.z;
-
-      if (!overlapX || !overlapY || !overlapZ) {
+      if (spacesOverlap(space, obs)) {
+        newSpaces.push(...splitSpaceByObstacle(space, obs));
+      } else {
         // ไม่ทับกัน → เก็บ space เดิมไว้
         newSpaces.push(space);
-        continue;
-      }
-
-      // ทับกัน → แบ่ง space ออกเป็น sub-spaces รอบ ๆ obstacle (Guillotine cut)
-      // 1) พื้นที่ด้านขวาของ obstacle (ในแกน X)
-      const rightW = space.x + space.width - (obs.x + obs.width);
-      if (rightW > 0) {
-        newSpaces.push({
-          x: obs.x + obs.width,
-          y: space.y,
-          z: space.z,
-          width: rightW,
-          length: space.length,
-          height: space.height,
-        });
-      }
-      // 2) พื้นที่ด้านซ้ายของ obstacle (ในแกน X) — สำคัญเพราะ obstacle อาจไม่ชิดผนังซ้าย
-      const leftW = obs.x - space.x;
-      if (leftW > 0) {
-        newSpaces.push({
-          x: space.x,
-          y: space.y,
-          z: space.z,
-          width: leftW,
-          length: space.length,
-          height: space.height,
-        });
-      }
-      // 3) พื้นที่ด้านหน้าของ obstacle (ในแกน Y — ฝั่งปลายรถ)
-      const frontL = space.y + space.length - (obs.y + obs.length);
-      if (frontL > 0) {
-        newSpaces.push({
-          x: space.x,
-          y: obs.y + obs.length,
-          z: space.z,
-          width: space.width,
-          length: frontL,
-          height: space.height,
-        });
-      }
-      // 4) พื้นที่ด้านหลังของ obstacle (ในแกน Y — ฝั่งห้องโดยสาร)
-      const backL = obs.y - space.y;
-      if (backL > 0) {
-        newSpaces.push({
-          x: space.x,
-          y: space.y,
-          z: space.z,
-          width: space.width,
-          length: backL,
-          height: space.height,
-        });
-      }
-      // 5) พื้นที่เหนือ obstacle (ในแกน Z — วางทับบนซุ้มล้อได้)
-      const topH = space.z + space.height - (obs.z + obs.height);
-      if (topH > 0) {
-        newSpaces.push({
-          x: space.x,
-          y: space.y,
-          z: obs.z + obs.height,
-          width: space.width,
-          length: space.length,
-          height: topH,
-        });
-      }
-      // 6) พื้นที่ใต้ obstacle (ในแกน Z — ไม่ควรเกิดเพราะ obstacle ปกติวางบนพื้น z=0)
-      const bottomH = obs.z - space.z;
-      if (bottomH > 0) {
-        newSpaces.push({
-          x: space.x,
-          y: space.y,
-          z: space.z,
-          width: space.width,
-          length: space.length,
-          height: bottomH,
-        });
       }
     }
 
-    // deduplicate + ลบ spaces ที่ยังทับ obstacle ตัวเดิมหรือ obstacle ก่อนหน้า
+    processedObstacles.push(obs);
+
+    // deduplicate + ลบ spaces ที่ทับ obstacle ที่ประมวลผลแล้วเท่านั้น
     spaces = deduplicateSpaces(newSpaces).filter(s =>
-      placedObstacles.every(po => {
-        const oX = s.x < po.x + po.width && s.x + s.width > po.x;
-        const oY = s.y < po.y + po.length && s.y + s.length > po.y;
-        const oZ = s.z < po.z + po.height && s.z + s.height > po.z;
-        return !(oX && oY && oZ);
-      })
+      processedObstacles.every(po => !spacesOverlap(s, po))
     );
   }
 
-  // ลบ spaces ที่อยู่ในอีก space หนึ่ง (redundant)
-  spaces = deduplicateSpaces(spaces).filter((space, idx, arr) => {
-    return !arr.some((other, otherIdx) =>
-      otherIdx !== idx && isSpaceInside(space, other)
-    );
-  });
+  // ลบเฉพาะ duplicates ที่ซ้ำกันทุกมิติ — ไม่ใช้ isSpaceInside เพราะพื้นที่ว่าง
+  // ในตำแหน่งต่างกันถือเป็นคนละช่องกัน (isSpaceInside ลบทิ้งได้ผิด)
+  spaces = deduplicateSpaces(spaces);
 
   return { spaces, placedObstacles };
 }
@@ -241,11 +239,7 @@ function hasNoOverlap(
   placedBoxes: PlacedBox[]
 ): boolean {
   for (const placed of placedBoxes) {
-    const overlapX = space.x < placed.x + placed.width && space.x + space.width > placed.x;
-    const overlapY = space.y < placed.y + placed.length && space.y + space.length > placed.y;
-    const overlapZ = space.z < placed.z + placed.height && space.z + space.height > placed.z;
-
-    if (overlapX && overlapY && overlapZ) {
+    if (spacesOverlap(space, placed)) {
       return false;
     }
   }
