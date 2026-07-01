@@ -18,7 +18,7 @@ export const truckTypes: TruckType[] = [
     cbm: 6,
     maxWeight: 1500,
     // มิติจริง Revo ตอนเดียว (วัดเองเมื่อ 2026-05)
-    dimensions: { width: 1.575, length: 2.315, height: 2.100 },
+    dimensions: { width: 1.575, length: 2.315, height: 2.1 },
     usableSpace: 100,
     jobKey: '4ล้อ_PPY',
     obstacles: [

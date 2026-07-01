@@ -295,6 +295,57 @@ function generateSubSpaces(
   return subSpaces;
 }
 
+function cleanupAvailableSpaces(availableSpaces: Space3D[], placedBoxes: PlacedBox[]): Space3D[] {
+  // Clean up: remove spaces that overlap with placed boxes
+  let cleaned = deduplicateSpaces(availableSpaces).filter(space => hasNoOverlap(space, placedBoxes));
+  // Remove redundant spaces (spaces completely inside other spaces)
+  cleaned = deduplicateSpaces(cleaned).filter((space, idx, arr) => {
+    return !arr.some((other, otherIdx) =>
+      otherIdx !== idx && isSpaceInside(space, other)
+    );
+  });
+  // Cap available spaces to prevent unbounded growth (O(n²) cleanup)
+  // Keep only the largest 50 spaces — sufficient for typical cargo scenarios
+  if (cleaned.length > 50) {
+    cleaned.sort((a, b) => (b.width * b.length * b.height) - (a.width * a.length * a.height));
+    cleaned = cleaned.slice(0, 50);
+  }
+  return cleaned;
+}
+
+/**
+ * Try to place a single item using any rotation in any available space.
+ * Returns the placement info if placed, otherwise null.
+ */
+function tryPlaceItem(
+  item: { cargoIndex: number; itemIndex: number; dimensions: Box3D; volume: number },
+  availableSpacesRef: { spaces: Space3D[] },
+  placedBoxes: PlacedBox[]
+): { newBox: PlacedBox; packedItem: PackedItem; usedSpace: Space3D; subSpaces: Space3D[] } | null {
+  const rotations = getRotations(item.dimensions);
+  for (const rotation of rotations) {
+    for (const space of availableSpacesRef.spaces) {
+      if (!canFitInSpace(rotation, space)) continue;
+      const newBox: PlacedBox = {
+        x: space.x, y: space.y, z: space.z,
+        width: rotation.width, length: rotation.length, height: rotation.height,
+        cargoIndex: item.cargoIndex, itemIndex: item.itemIndex,
+      };
+      if (!hasNoOverlap(newBox, placedBoxes)) continue;
+      const subSpaces = generateSubSpaces(space, newBox);
+      const packedItem: PackedItem = {
+        itemIndex: item.itemIndex,
+        cargoIndex: item.cargoIndex,
+        position: { x: newBox.x, y: newBox.y, z: newBox.z },
+        rotatedDimensions: rotation,
+        fits: true,
+      };
+      return { newBox, packedItem, usedSpace: space, subSpaces };
+    }
+  }
+  return null;
+}
+
 // Main 3D Bin Packing function
 export function performBinPacking(
   cargoItems: CargoItem[],
@@ -345,7 +396,7 @@ export function performBinPacking(
   const { spaces: initialSpaces, placedObstacles } = processObstacles(initialSpace, truck.obstacles || []);
 
   // Initialize available spaces (หลังตัดซุ้มล้อแล้ว)
-  let availableSpaces: Space3D[] = initialSpaces;
+  const availableSpacesRef = { spaces: initialSpaces };
 
   // placedBoxes เริ่มจาก obstacles ที่วางอยู่ก่อนแล้ว (ซุ้มล้อ)
   const placedBoxes: PlacedBox[] = [...placedObstacles];
@@ -354,83 +405,23 @@ export function performBinPacking(
   let utilizedCBM = 0;
 
   for (const item of itemsToPack) {
-    const rotations = getRotations(item.dimensions);
-    let placed = false;
-
     // Sort available spaces by volume (smallest first to find tightest fit)
-    availableSpaces.sort((a, b) => {
+    availableSpacesRef.spaces.sort((a, b) => {
       const volA = a.width * a.length * a.height;
       const volB = b.width * b.length * b.height;
       return volA - volB;
     });
 
-    for (const rotation of rotations) {
-      if (placed) break;
-
-      for (const space of availableSpaces) {
-        if (placed) break;
-
-        if (!canFitInSpace(rotation, space)) continue;
-
-        // Place the item at the corner of this space
-        const newBox: PlacedBox = {
-          x: space.x,
-          y: space.y,
-          z: space.z,
-          width: rotation.width,
-          length: rotation.length,
-          height: rotation.height,
-          cargoIndex: item.cargoIndex,
-          itemIndex: item.itemIndex,
-        };
-
-        // Verify no overlap with existing boxes
-        if (!hasNoOverlap(newBox, placedBoxes)) continue;
-
-        // Place the box
-        placedBoxes.push(newBox);
-        utilizedCBM += item.volume;
-
-        packedItems.push({
-          itemIndex: item.itemIndex,
-          cargoIndex: item.cargoIndex,
-          position: { x: newBox.x, y: newBox.y, z: newBox.z },
-          rotatedDimensions: rotation,
-          fits: true,
-        });
-
-        // Generate new sub-spaces
-        const subSpaces = generateSubSpaces(space, newBox);
-
-        // Remove the used space and add sub-spaces
-        availableSpaces = availableSpaces.filter(s => s !== space);
-        availableSpaces.push(...subSpaces);
-
-        // Clean up: remove spaces that are inside other spaces or overlap with placed boxes
-        availableSpaces = deduplicateSpaces(availableSpaces).filter(space => {
-          // Must not overlap any placed box (รวม obstacles)
-          return hasNoOverlap(space, placedBoxes);
-        });
-
-        // Remove redundant spaces (spaces completely inside other spaces)
-        availableSpaces = deduplicateSpaces(availableSpaces).filter((space, idx, arr) => {
-          return !arr.some((other, otherIdx) =>
-            otherIdx !== idx && isSpaceInside(space, other)
-          );
-        });
-
-        // Cap available spaces to prevent unbounded growth (O(n²) cleanup)
-        // Keep only the largest 50 spaces — sufficient for typical cargo scenarios
-        if (availableSpaces.length > 50) {
-          availableSpaces.sort((a, b) => (b.width * b.length * b.height) - (a.width * a.length * a.height));
-          availableSpaces = availableSpaces.slice(0, 50);
-        }
-
-        placed = true;
-      }
-    }
-
-    if (!placed) {
+    const placement = tryPlaceItem(item, availableSpacesRef, placedBoxes);
+    if (placement) {
+      placedBoxes.push(placement.newBox);
+      utilizedCBM += item.volume;
+      packedItems.push(placement.packedItem);
+      // Remove the used space and add sub-spaces
+      availableSpacesRef.spaces = availableSpacesRef.spaces.filter(s => s !== placement.usedSpace);
+      availableSpacesRef.spaces.push(...placement.subSpaces);
+      availableSpacesRef.spaces = cleanupAvailableSpaces(availableSpacesRef.spaces, placedBoxes);
+    } else {
       unfittedItems.push({
         cargoIndex: item.cargoIndex,
         itemIndex: item.itemIndex,

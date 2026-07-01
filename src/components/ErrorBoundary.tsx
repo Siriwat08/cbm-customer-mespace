@@ -29,7 +29,7 @@ export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, E
 
   handleReset = () => {
     // Increment key to force remount of children — prevents infinite error loop
-    this.setState({ hasError: false, error: null, resetKey: this.state.resetKey + 1 });
+    this.setState(prevState => ({ hasError: false, error: null, resetKey: prevState.resetKey + 1 }));
   };
 
   render() {

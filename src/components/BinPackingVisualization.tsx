@@ -4,9 +4,9 @@ import { useState, useMemo } from 'react';
 import type { BinPackingResult, TruckType, CargoItem } from '@/lib/types';
 
 interface BinPackingVisualizationProps {
-  result: BinPackingResult;
-  truck: TruckType;
-  cargoItems: CargoItem[];
+  readonly result: BinPackingResult;
+  readonly truck: TruckType;
+  readonly cargoItems: CargoItem[];
 }
 
 // Color palette for different cargo items
@@ -166,7 +166,7 @@ export default function BinPackingVisualization({ result, truck, cargoItems }: B
           const x = pad + arch.x;
           const y = pad + (sH - arch.z - arch.h); // SVG y is top-down, z is bottom-up
           return (
-            <g key={`arch-${idx}`}>
+            <g key={`arch-rear-${arch.label}-${arch.origX}-${arch.origY}`}>
               <rect x={x} y={y} width={arch.w} height={arch.h}
                 fill="#9CA3AF" fillOpacity={0.85}
                 stroke="#4B5563" strokeWidth="2" rx="2"
@@ -254,7 +254,7 @@ export default function BinPackingVisualization({ result, truck, cargoItems }: B
           const x = pad + arch.x;
           const y = pad + arch.y;
           return (
-            <g key={`arch-top-${idx}`}>
+            <g key={`arch-top-${arch.label}-${arch.origX}-${arch.origY}`}>
               <rect x={x} y={y} width={arch.w} height={arch.l}
                 fill="#9CA3AF" fillOpacity={0.85}
                 stroke="#4B5563" strokeWidth="2" rx="2"
@@ -443,14 +443,6 @@ export default function BinPackingVisualization({ result, truck, cargoItems }: B
     // Sort items by depth for proper occlusion
     const sorted = [...placements].sort((a, b) => (a.x + a.y) - (b.x + b.y));
 
-    // Door lines (rear face - y=0 plane)
-    const doorLines = [
-      [project(0, 0, 0), project(sW, 0, 0)],
-      [project(sW, 0, 0), project(sW, 0, sH)],
-      [project(sW, 0, sH), project(0, 0, sH)],
-      [project(0, 0, sH), project(0, 0, 0)],
-    ];
-
     const floorFace = [
       project(0, 0, 0), project(sW, 0, 0),
       project(sW, sL, 0), project(0, sL, 0),
@@ -602,7 +594,7 @@ export default function BinPackingVisualization({ result, truck, cargoItems }: B
           ].map(p => `${p[0] + offsetX},${p[1] + offsetY}`).join(' ');
           const labelPos = project(x + w / 2, y + l / 2, z + h);
           return (
-            <g key={`arch-3d-${idx}`}>
+            <g key={`arch-3d-${arch.label}-${arch.origX}-${arch.origY}`}>
               <polygon points={leftFace} fill="#9CA3AF" fillOpacity={0.9} stroke="#374151" strokeWidth="1.5" strokeDasharray="2,1" />
               <polygon points={rightFace} fill="#6B7280" fillOpacity={0.7} stroke="#374151" strokeWidth="1.5" strokeDasharray="2,1" />
               <polygon points={topFace} fill="#D1D5DB" fillOpacity={0.85} stroke="#374151" strokeWidth="1.5" strokeDasharray="2,1" />

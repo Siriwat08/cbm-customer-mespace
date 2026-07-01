@@ -26,6 +26,13 @@ function addDays(isoDate: string, days: number): string {
   return formatDateISO(date);
 }
 
+// Returns a background color class for utilization percentage (S3358: extracted from nested ternary)
+function utilizationColor(percent: number): string {
+  if (percent > 90) return 'bg-red-500';
+  if (percent > 70) return 'bg-amber-500';
+  return 'bg-emerald-500';
+}
+
 export default function Home() {
   // ===== Tab State =====
   const [activeTab, setActiveTab] = useState<'cbm' | 'price'>('cbm');
@@ -34,11 +41,8 @@ export default function Home() {
   const [currentOilPrice, setCurrentOilPrice] = useState<number>(FALLBACK_DIESEL_PRICE);
   const [oilPriceHistory, setOilPriceHistory] = useState<OilPrice[]>([]);
   const [loadingOil, setLoadingOil] = useState(true);
-  const [liveOilPrice, setLiveOilPrice] = useState<number | null>(null);
 
   // ===== Manual Oil Price Input (session-only) =====
-  const [showOilPriceForm, setShowOilPriceForm] = useState(false);
-  const [manualPrice, setManualPrice] = useState<string>('');
   const [usingManualPrice, setUsingManualPrice] = useState(false);
   const [originalOilPrice, setOriginalOilPrice] = useState<number>(FALLBACK_DIESEL_PRICE);
 
@@ -203,9 +207,10 @@ export default function Home() {
     return { calculatedPrice: null, priceDetails: null };
   }, [rateData, jobKey, distance, applicableOilPrice]);
 
-  const totalCalculatedPrice = calculatedPrice !== null
-    ? calculatedPrice + (includeLabor ? LABOR_COST : 0) + serviceTimeFee
-    : null;
+  const laborAddition = includeLabor ? LABOR_COST : 0;
+  const totalCalculatedPrice = calculatedPrice === null
+    ? null
+    : calculatedPrice + laborAddition + serviceTimeFee;
 
   // ===== Data Fetching Effects =====
   const applyOilPriceData = useCallback((data: { price?: number; livePrice?: { price?: number } | null; history?: OilPrice[] }) => {
@@ -216,7 +221,7 @@ export default function Home() {
       }
     }
     if (data.livePrice && typeof data.livePrice.price === 'number') {
-      setLiveOilPrice(data.livePrice.price);
+      // livePrice tracking removed — not displayed in UI
     }
     if (data.history && data.history.length > 0) {
       setOilPriceHistory(data.history);
@@ -305,26 +310,151 @@ export default function Home() {
 
   const openPopup = (image: string) => { setPopupImage(image); setShowPopup(true); };
 
-  const handleApplyManualPrice = () => {
-    const price = Number.parseFloat(manualPrice);
-    if (Number.isNaN(price) || price <= 0 || price > 200) {
-      alert('กรุณาใส่ราคาที่ถูกต้อง (0.01 - 200 บาท)');
+  // Distance input handler — extracted from inline onChange (S2681: braces required for conditional statements)
+  const handleDistanceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = Number.parseFloat(e.target.value);
+    if (val < 0) { return; }
+    if (val === 0 && e.target.value.includes('0') && !e.target.value.includes('.')) {
+      setDistance('');
       return;
     }
-    if (!usingManualPrice) {
-      setOriginalOilPrice(currentOilPrice);
-    }
-    setCurrentOilPrice(price);
-    setUsingManualPrice(true);
-    setShowOilPriceForm(false);
-    setManualPrice('');
+    setDistance(e.target.value);
   };
 
-  const handleClearManualPrice = () => {
-    setCurrentOilPrice(originalOilPrice);
-    setUsingManualPrice(false);
-    setManualPrice('');
-    setShowOilPriceForm(false);
+  // Oil price display — extracted from nested ternary (S3358)
+  const renderOilPriceDisplay = () => {
+    if (loadingOil) {
+      return (
+        <div className="text-center py-4">
+          <div className="animate-spin w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto"></div>
+          <p className="text-gray-500 mt-2">กำลังโหลดราคาน้ำมัน...</p>
+        </div>
+      );
+    }
+    if (oilPriceHistory.length > 0) {
+      return (
+        <div className="overflow-x-auto">
+          <table className="w-full table-fixed">
+            <thead>
+              <tr className="bg-gray-50">
+                <th className="text-left py-2 px-3 text-gray-600 font-medium w-1/4">วันที่</th>
+                <th className="text-center py-2 px-3 text-gray-600 font-medium w-1/5">สถานะ</th>
+                <th className="text-center py-2 px-3 text-gray-600 font-medium w-1/5">ใช้คำนวณ</th>
+                <th className="text-right py-2 px-3 text-gray-600 font-medium w-1/5">ราคา (บาท)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {oilPriceHistory.slice(0, showAllHistory ? oilPriceHistory.length : 10).map((item, index) => {
+                let statusEmoji = '';
+                let statusText = '';
+                let statusColor = '';
+                if (index < oilPriceHistory.length - 1) {
+                  const prevPrice = oilPriceHistory[index + 1].price;
+                  const diff = item.price - prevPrice;
+                  if (diff > 0) { statusEmoji = '🟢'; statusText = `▲ เพิ่มขึ้น +${diff.toFixed(2)}`; statusColor = 'text-emerald-600'; }
+                  else if (diff < 0) { statusEmoji = '🔴'; statusText = `▼ ลดลง ${diff.toFixed(2)}`; statusColor = 'text-red-500'; }
+                  else { statusEmoji = '⚪'; statusText = '➖ เท่าเดิม'; statusColor = 'text-gray-500'; }
+                }
+                const isApplicable = !usingManualPrice && applicableOilInfo.mondayDate === item.date;
+                const isLatest = index === 0;
+                return (
+                  <tr key={item.date} className={`border-b ${isApplicable ? 'bg-emerald-50 font-bold' : ''}`}>
+                    <td className="py-2 px-3 text-left text-gray-700">{formatDisplayDate(item.date)}</td>
+                    <td className={`py-2 px-3 text-center text-sm font-medium ${statusColor}`}>{statusEmoji} {statusText}</td>
+                    <td className="py-2 px-3 text-center">
+                      {isApplicable && <span className="bg-emerald-600 text-white text-xs px-2 py-0.5 rounded">ใช้คำนวณ</span>}
+                      {!isApplicable && isLatest && <span className="bg-gray-200 text-gray-500 text-xs px-2 py-0.5 rounded">ล่าสุด</span>}
+                    </td>
+                    <td className={`py-2 px-3 text-right ${isApplicable ? 'text-emerald-600 text-lg font-bold' : 'text-gray-900'}`}>{item.price.toFixed(2)}</td>
+                  </tr>
+                );
+              })}
+              {oilPriceHistory.length > 10 && (
+                <tr>
+                  <td colSpan={4} className="text-center pt-2">
+                    <button onClick={() => setShowAllHistory(!showAllHistory)} className="text-sm text-emerald-600 hover:text-emerald-700 font-medium">
+                      {showAllHistory ? '▲ แสดงน้อยลง' : `▼ แสดงเพิ่มเติม (${oilPriceHistory.length - 10} รายการ)`}
+                    </button>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+    return (
+      <div className="text-center py-4">
+        <p className="text-gray-600 mb-2">ราคาน้ำมันดีเซล</p>
+        <p className="text-3xl font-bold text-orange-600">{currentOilPrice.toFixed(2)} บาท</p>
+        <p className="text-sm text-orange-500 mt-2">⚠️ ใช้ข้อมูลประมาณการ</p>
+        <button onClick={refreshOilPrice} className="mt-3 px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm hover:bg-emerald-600">🔄 ลองโหลดใหม่</button>
+      </div>
+    );
+  };
+
+  // Price result display — extracted from nested ternary (S3358)
+  const renderPriceResult = () => {
+    if (calculatedPrice !== null && priceDetails) {
+      return (
+        <div className="bg-gradient-to-r from-blue-50 to-emerald-50 rounded-xl p-6 border-2 border-blue-200">
+          <div className="text-center">
+            <p className="text-gray-600 mb-2">ราคาค่าขนส่ง</p>
+            <p className="text-4xl font-bold text-blue-600">฿{calculatedPrice.toLocaleString()}</p>
+
+            <div className="mt-3 bg-white/80 rounded-lg p-4 text-left space-y-2">
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>🚛 ค่าขนส่ง</span>
+                <span className="font-medium">฿{calculatedPrice.toLocaleString()}</span>
+              </div>
+              {includeLabor && (
+                <div className="flex justify-between text-sm text-amber-700">
+                  <span>👷 ค่าแรงงานยกสินค้า</span>
+                  <span className="font-medium">฿{LABOR_COST.toLocaleString()}</span>
+                </div>
+              )}
+              {serviceTimeFee > 0 && (
+                <div className="flex justify-between text-sm text-indigo-700">
+                  <span>⏰ ค่าบริการช่วงนอกเวลา</span>
+                  <span className="font-medium">฿{serviceTimeFee.toLocaleString()}</span>
+                </div>
+              )}
+              <div className="border-t border-blue-200 pt-2 mt-2">
+                <div className="flex justify-between">
+                  <span className="font-bold text-gray-800">รวมทั้งหมด</span>
+                  <span className="font-bold text-blue-600 text-2xl">฿{totalCalculatedPrice?.toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 text-sm text-gray-500 space-y-1">
+              <p>🚛 ประเภทรถ: {truck.name}</p>
+              <p>⛽ ช่วงราคาน้ำมัน: {priceDetails.oilRange}</p>
+              <p>📏 ช่วงระยะทาง: {priceDetails.distRange}</p>
+              <p>📅 วันที่ใช้บริการ: <span className="font-semibold text-blue-600">{serviceDate ? formatThaiDateLong(serviceDate) : '-'}</span></p>
+              <p>⏰ เวลาที่ใช้บริการ: <span className="font-semibold text-blue-600">{serviceTime || '-'}</span> {isOutOfHoursService ? `(${serviceFeeInfo.reason})` : '(ช่วงปกติ)'}</p>
+              <p>💵 ราคาน้ำมันที่ใช้คำนวณ: <span className="font-semibold text-blue-600">{applicableOilPrice.toFixed(2)} บาท</span></p>
+              {!applicableOilInfo.isManual && applicableOilInfo.mondayDate && (
+                <p className="text-blue-500">
+                  📅 อ้างอิง: ราคาน้ำมัน จันทร์ที่ {formatDisplayDate(applicableOilInfo.mondayDate)} → ใช้รอบ {formatDisplayDate(applicableOilInfo.periodStart)} - {formatDisplayDate(applicableOilInfo.periodEnd)}
+                </p>
+              )}
+              {applicableOilInfo.isManual && (
+                <p className="text-amber-500">✏️ ใช้ราคาน้ำมันที่กำหนดเอง</p>
+              )}
+              {includeLabor && <p>👷 ค่าแรงงานยกสินค้า: ฿{LABOR_COST.toLocaleString()}</p>}
+              {serviceTimeFee > 0 && <p>⏰ ค่าบริการช่วงนอกเวลา: ฿{serviceTimeFee.toLocaleString()}</p>}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    if (distance && loadingRates) {
+      return (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-800">⏳ กำลังโหลดข้อมูลอัตราค่าขนส่ง...</div>
+      );
+    }
+    return null;
   };
 
   return (
@@ -527,7 +657,7 @@ export default function Home() {
                           <span>{binPackingResult.utilizationPercent.toFixed(1)}%</span>
                         </div>
                         <div className="bg-gray-200 rounded-full h-3">
-                          <div className={`h-3 rounded-full ${binPackingResult.utilizationPercent > 90 ? 'bg-red-500' : binPackingResult.utilizationPercent > 70 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(binPackingResult.utilizationPercent, 100)}%` }} />
+                          <div className={`h-3 rounded-full ${utilizationColor(binPackingResult.utilizationPercent)}`} style={{ width: `${Math.min(binPackingResult.utilizationPercent, 100)}%` }} />
                         </div>
                       </div>
 
@@ -617,69 +747,7 @@ export default function Home() {
                 <p className="text-emerald-100 text-xs mt-0.5">ราคาขายปลีก กทม. และปริมณฑล (หน่วย: บาท/ลิตร)</p>
               </div>
               <div className="p-4">
-                {loadingOil ? (
-                  <div className="text-center py-4">
-                    <div className="animate-spin w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto"></div>
-                    <p className="text-gray-500 mt-2">กำลังโหลดราคาน้ำมัน...</p>
-                  </div>
-                ) : oilPriceHistory.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full table-fixed">
-                      <thead>
-                        <tr className="bg-gray-50">
-                          <th className="text-left py-2 px-3 text-gray-600 font-medium w-1/4">วันที่</th>
-                          <th className="text-center py-2 px-3 text-gray-600 font-medium w-1/5">สถานะ</th>
-                          <th className="text-center py-2 px-3 text-gray-600 font-medium w-1/5">ใช้คำนวณ</th>
-                          <th className="text-right py-2 px-3 text-gray-600 font-medium w-1/5">ราคา (บาท)</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {oilPriceHistory.slice(0, showAllHistory ? oilPriceHistory.length : 10).map((item, index) => {
-                          let statusEmoji = '';
-                          let statusText = '';
-                          let statusColor = '';
-                          if (index < oilPriceHistory.length - 1) {
-                            const prevPrice = oilPriceHistory[index + 1].price;
-                            const diff = item.price - prevPrice;
-                            if (diff > 0) { statusEmoji = '🟢'; statusText = `▲ เพิ่มขึ้น +${diff.toFixed(2)}`; statusColor = 'text-emerald-600'; }
-                            else if (diff < 0) { statusEmoji = '🔴'; statusText = `▼ ลดลง ${diff.toFixed(2)}`; statusColor = 'text-red-500'; }
-                            else { statusEmoji = '⚪'; statusText = '➖ เท่าเดิม'; statusColor = 'text-gray-500'; }
-                          }
-                          // แสดง "ใช้คำนวณ" ที่วันที่ใช้คิดราคาจริง (วันจันทร์ที่อ้างอิงจากกฎจันทร์→พุธ-อังคาร)
-                          const isApplicable = !usingManualPrice && applicableOilInfo.mondayDate === item.date;
-                          const isLatest = index === 0;
-                          return (
-                            <tr key={item.date} className={`border-b ${isApplicable ? 'bg-emerald-50 font-bold' : ''}`}>
-                              <td className="py-2 px-3 text-left text-gray-700">{formatDisplayDate(item.date)}</td>
-                              <td className={`py-2 px-3 text-center text-sm font-medium ${statusColor}`}>{statusEmoji} {statusText}</td>
-                              <td className="py-2 px-3 text-center">
-                                {isApplicable && <span className="bg-emerald-600 text-white text-xs px-2 py-0.5 rounded">ใช้คำนวณ</span>}
-                                {!isApplicable && isLatest && <span className="bg-gray-200 text-gray-500 text-xs px-2 py-0.5 rounded">ล่าสุด</span>}
-                              </td>
-                              <td className={`py-2 px-3 text-right ${isApplicable ? 'text-emerald-600 text-lg font-bold' : 'text-gray-900'}`}>{item.price.toFixed(2)}</td>
-                            </tr>
-                          );
-                        })}
-                        {oilPriceHistory.length > 10 && (
-                          <tr>
-                            <td colSpan={4} className="text-center pt-2">
-                              <button onClick={() => setShowAllHistory(!showAllHistory)} className="text-sm text-emerald-600 hover:text-emerald-700 font-medium">
-                                {showAllHistory ? '▲ แสดงน้อยลง' : `▼ แสดงเพิ่มเติม (${oilPriceHistory.length - 10} รายการ)`}
-                              </button>
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="text-center py-4">
-                    <p className="text-gray-600 mb-2">ราคาน้ำมันดีเซล</p>
-                    <p className="text-3xl font-bold text-orange-600">{currentOilPrice.toFixed(2)} บาท</p>
-                    <p className="text-sm text-orange-500 mt-2">⚠️ ใช้ข้อมูลประมาณการ</p>
-                    <button onClick={refreshOilPrice} className="mt-3 px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm hover:bg-emerald-600">🔄 ลองโหลดใหม่</button>
-                  </div>
-                )}
+                {renderOilPriceDisplay()}
 
                 <div className="mt-3 border-t pt-3">
                   <p className="text-xs text-gray-400 text-center">
@@ -761,7 +829,7 @@ export default function Home() {
                 <div>
                   <label htmlFor="distance-input" className="block text-gray-700 font-medium mb-2">ระยะทาง <span className="text-red-500">*</span></label>
                   <div className="flex items-center gap-2">
-                    <input id="distance-input" type="number" value={distance} onChange={(e) => { const val = Number.parseFloat(e.target.value); if (val < 0) return; if (val === 0 && e.target.value.includes('0') && !e.target.value.includes('.')) { setDistance(''); return; } setDistance(e.target.value); }} inputMode="decimal" placeholder="กรอกระยะทาง" className="flex-1 border-2 border-gray-200 rounded-lg px-4 py-3 focus:border-blue-500 focus:outline-none text-lg" min="1" aria-label="ระยะทางเป็นกิโลเมตร" />
+                    <input id="distance-input" type="number" value={distance} onChange={handleDistanceChange} inputMode="decimal" placeholder="กรอกระยะทาง" className="flex-1 border-2 border-gray-200 rounded-lg px-4 py-3 focus:border-blue-500 focus:outline-none text-lg" min="1" aria-label="ระยะทางเป็นกิโลเมตร" />
                     <span className="text-gray-600 font-medium">กม.</span>
                   </div>
                 </div>
@@ -796,60 +864,7 @@ export default function Home() {
                   )}
                 </div>
 
-                {calculatedPrice !== null && priceDetails ? (
-                  <div className="bg-gradient-to-r from-blue-50 to-emerald-50 rounded-xl p-6 border-2 border-blue-200">
-                    <div className="text-center">
-                      <p className="text-gray-600 mb-2">ราคาค่าขนส่ง</p>
-                      <p className="text-4xl font-bold text-blue-600">฿{calculatedPrice.toLocaleString()}</p>
-
-                      <div className="mt-3 bg-white/80 rounded-lg p-4 text-left space-y-2">
-                        <div className="flex justify-between text-sm text-gray-600">
-                          <span>🚛 ค่าขนส่ง</span>
-                          <span className="font-medium">฿{calculatedPrice.toLocaleString()}</span>
-                        </div>
-                        {includeLabor && (
-                          <div className="flex justify-between text-sm text-amber-700">
-                            <span>👷 ค่าแรงงานยกสินค้า</span>
-                            <span className="font-medium">฿{LABOR_COST.toLocaleString()}</span>
-                          </div>
-                        )}
-                        {serviceTimeFee > 0 && (
-                          <div className="flex justify-between text-sm text-indigo-700">
-                            <span>⏰ ค่าบริการช่วงนอกเวลา</span>
-                            <span className="font-medium">฿{serviceTimeFee.toLocaleString()}</span>
-                          </div>
-                        )}
-                        <div className="border-t border-blue-200 pt-2 mt-2">
-                          <div className="flex justify-between">
-                            <span className="font-bold text-gray-800">รวมทั้งหมด</span>
-                            <span className="font-bold text-blue-600 text-2xl">฿{totalCalculatedPrice?.toLocaleString()}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 text-sm text-gray-500 space-y-1">
-                        <p>🚛 ประเภทรถ: {truck.name}</p>
-                        <p>⛽ ช่วงราคาน้ำมัน: {priceDetails.oilRange}</p>
-                        <p>📏 ช่วงระยะทาง: {priceDetails.distRange}</p>
-                        <p>📅 วันที่ใช้บริการ: <span className="font-semibold text-blue-600">{serviceDate ? formatThaiDateLong(serviceDate) : '-'}</span></p>
-                        <p>⏰ เวลาที่ใช้บริการ: <span className="font-semibold text-blue-600">{serviceTime || '-'}</span> {isOutOfHoursService ? `(${serviceFeeInfo.reason})` : '(ช่วงปกติ)'}</p>
-                        <p>💵 ราคาน้ำมันที่ใช้คำนวณ: <span className="font-semibold text-blue-600">{applicableOilPrice.toFixed(2)} บาท</span></p>
-                        {!applicableOilInfo.isManual && applicableOilInfo.mondayDate && (
-                          <p className="text-blue-500">
-                            📅 อ้างอิง: ราคาน้ำมัน จันทร์ที่ {formatDisplayDate(applicableOilInfo.mondayDate)} → ใช้รอบ {formatDisplayDate(applicableOilInfo.periodStart)} - {formatDisplayDate(applicableOilInfo.periodEnd)}
-                          </p>
-                        )}
-                        {applicableOilInfo.isManual && (
-                          <p className="text-amber-500">✏️ ใช้ราคาน้ำมันที่กำหนดเอง</p>
-                        )}
-                        {includeLabor && <p>👷 ค่าแรงงานยกสินค้า: ฿{LABOR_COST.toLocaleString()}</p>}
-                        {serviceTimeFee > 0 && <p>⏰ ค่าบริการช่วงนอกเวลา: ฿{serviceTimeFee.toLocaleString()}</p>}
-                      </div>
-                    </div>
-                  </div>
-                ) : distance && loadingRates ? (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-800">⏳ กำลังโหลดข้อมูลอัตราค่าขนส่ง...</div>
-                ) : null}
+                {renderPriceResult()}
               </div>
             </section>
           </div>

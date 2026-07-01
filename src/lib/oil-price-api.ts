@@ -186,13 +186,15 @@ export function getApplicableOilPrice(
 
   // If no entry at all, find the earliest entry in history (better than fallback)
   if (sortedHistory.length > 0) {
-    const earliest = sortedHistory[sortedHistory.length - 1];
-    return {
-      price: earliest.price,
-      mondayDate: earliest.date,
-      periodStart: periodStartISO,
-      periodEnd: periodEndISO,
-    };
+    const earliest = sortedHistory.at(-1);
+    if (earliest) {
+      return {
+        price: earliest.price,
+        mondayDate: earliest.date,
+        periodStart: periodStartISO,
+        periodEnd: periodEndISO,
+      };
+    }
   }
 
   // Absolute fallback

@@ -15,6 +15,23 @@ const THAI_MONTHS: Record<string, string> = {
   '09': 'ก.ย.', '10': 'ต.ค.', '11': 'พ.ย.', '12': 'ธ.ค.',
 };
 
+function pad2(value: number): string {
+  return value.toString().padStart(2, '0');
+}
+
+function fromDateToDisplay(d: Date): string {
+  return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
+
+function normalizeYear(year: number, day: string, month: string, fallback: string): string {
+  if (Number.isNaN(year)) return fallback;
+  // If Buddhist era (> 2400), convert to Christian era
+  if (year > 2400) {
+    return `${day}/${month}/${year - 543}`;
+  }
+  return fallback;
+}
+
 /**
  * Convert any date input to DD/MM/YYYY (Christian era) for display.
  * Handles: ISO format, Thai Buddhist format, timestamps, and edge cases.
@@ -25,13 +42,20 @@ export function formatDisplayDate(dateInput: unknown): string {
     // Unix timestamp
     const d = new Date(dateInput);
     if (Number.isNaN(d.getTime())) return '-';
-    const day = d.getDate().toString().padStart(2, '0');
-    const month = (d.getMonth() + 1).toString().padStart(2, '0');
-    const year = d.getFullYear().toString();
-    return `${day}/${month}/${year}`;
+    return fromDateToDisplay(d);
   }
+  if (typeof dateInput === 'string') {
+    return formatDisplayString(dateInput);
+  }
+  if (dateInput instanceof Date) {
+    return Number.isNaN(dateInput.getTime()) ? '-' : fromDateToDisplay(dateInput);
+  }
+  // Unsupported types (objects, booleans, etc.) cannot be reliably stringified
+  return '-';
+}
 
-  const str = String(dateInput).trim();
+function formatDisplayString(input: string): string {
+  const str = input.trim();
   if (!str) return '-';
 
   // Already in DD/MM/YYYY or DD/MM/BBBB format
@@ -40,12 +64,7 @@ export function formatDisplayDate(dateInput: unknown): string {
     if (parts.length === 3) {
       const [day, month, yearStr] = parts;
       const year = Number.parseInt(yearStr, 10);
-      if (Number.isNaN(year)) return str;
-      // If Buddhist era (> 2400), convert to Christian era
-      if (year > 2400) {
-        return `${day}/${month}/${year - 543}`;
-      }
-      return str;
+      return normalizeYear(year, day, month, str);
     }
   }
 
@@ -55,11 +74,8 @@ export function formatDisplayDate(dateInput: unknown): string {
     if (parts.length === 3) {
       const [yearStr, month, day] = parts;
       const year = Number.parseInt(yearStr, 10);
-      if (Number.isNaN(year)) return str;
-      // If year is Buddhist era (rare but possible), convert
-      if (year > 2400) {
-        return `${day}/${month}/${year - 543}`;
-      }
+      const normalized = normalizeYear(year, day, month, str);
+      if (normalized !== str) return normalized;
       return `${day}/${month}/${yearStr}`;
     }
   }
@@ -68,10 +84,7 @@ export function formatDisplayDate(dateInput: unknown): string {
   try {
     const d = new Date(str);
     if (!Number.isNaN(d.getTime())) {
-      const day = d.getDate().toString().padStart(2, '0');
-      const month = (d.getMonth() + 1).toString().padStart(2, '0');
-      const year = d.getFullYear().toString();
-      return `${day}/${month}/${year}`;
+      return fromDateToDisplay(d);
     }
   } catch {
     // ignore
