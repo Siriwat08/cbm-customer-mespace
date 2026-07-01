@@ -33,6 +33,37 @@ function utilizationColor(percent: number): string {
   return 'bg-emerald-500';
 }
 
+// Find oil range index that contains the given price (S3776: extracted from calculatedPrice useMemo)
+function findOilRangeIndex(oilRanges: { min: number; max: number }[], price: number): number {
+  for (let i = 0; i < oilRanges.length; i++) {
+    const range = oilRanges[i];
+    if (price >= range.min && price <= range.max) {
+      return i;
+    }
+  }
+  return oilRanges.length - 1;
+}
+
+// Find distance range index that contains the given distance (S3776: extracted from calculatedPrice useMemo)
+function findDistanceRangeIndex(
+  data: { dist_min: number; dist_max: number }[] | undefined,
+  dist: number
+): { index: number; range: string } {
+  if (!data || data.length === 0) return { index: -1, range: '' };
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    if (dist >= row.dist_min && dist <= row.dist_max) {
+      return { index: i, range: `${row.dist_min} - ${row.dist_max} กม.` };
+    }
+  }
+  // Out of range — clamp to nearest edge
+  if (dist < data[0].dist_min) {
+    return { index: 0, range: `0 - ${data[0].dist_max} กม.` };
+  }
+  const lastRow = data[data.length - 1];
+  return { index: data.length - 1, range: `${lastRow.dist_min}+ กม.` };
+}
+
 export default function Home() {
   // ===== Tab State =====
   const [activeTab, setActiveTab] = useState<'cbm' | 'price'>('cbm');
@@ -41,10 +72,6 @@ export default function Home() {
   const [currentOilPrice, setCurrentOilPrice] = useState<number>(FALLBACK_DIESEL_PRICE);
   const [oilPriceHistory, setOilPriceHistory] = useState<OilPrice[]>([]);
   const [loadingOil, setLoadingOil] = useState(true);
-
-  // ===== Manual Oil Price Input (session-only) =====
-  const [usingManualPrice, setUsingManualPrice] = useState(false);
-  const [originalOilPrice, setOriginalOilPrice] = useState<number>(FALLBACK_DIESEL_PRICE);
 
   // ===== Price Calculator State =====
   const [distance, setDistance] = useState<string>('');
@@ -131,20 +158,10 @@ export default function Home() {
 
   // ===== Applicable Oil Price (กฎจันทร์→พุธ-อังคาร) =====
   const applicableOilInfo = useMemo(() => {
-    if (usingManualPrice) {
-      // ถ้าผู้ใช้กำหนดราคาเอง ใช้ราคานั้นเลย
-      return {
-        price: currentOilPrice,
-        mondayDate: '',
-        periodStart: '',
-        periodEnd: '',
-        isManual: true,
-      };
-    }
     const referenceDate = serviceDate || todayISO;
     const applicable = getApplicableOilPrice(oilPriceHistory, referenceDate);
     return { ...applicable, isManual: false };
-  }, [oilPriceHistory, currentOilPrice, usingManualPrice, serviceDate, todayISO]);
+  }, [oilPriceHistory, serviceDate, todayISO]);
 
   // ราคาน้ำมันที่ใช้คิดค่าขนส่งจริง
   const applicableOilPrice = applicableOilInfo.price;
@@ -164,39 +181,8 @@ export default function Home() {
       return { calculatedPrice: null, priceDetails: null };
     }
 
-    let oilIndex = -1;
-    for (let i = 0; i < jobData.oil_ranges.length; i++) {
-      const range = jobData.oil_ranges[i];
-      if (applicableOilPrice >= range.min && applicableOilPrice <= range.max) {
-        oilIndex = i;
-        break;
-      }
-    }
-    if (oilIndex === -1) oilIndex = jobData.oil_ranges.length - 1;
-
-    let distIndex = -1;
-    let distRange = '';
-
-    if (jobData.data && jobData.data.length > 0) {
-      for (let i = 0; i < jobData.data.length; i++) {
-        const row = jobData.data[i];
-        if (dist >= row.dist_min && dist <= row.dist_max) {
-          distIndex = i;
-          distRange = `${row.dist_min} - ${row.dist_max} กม.`;
-          break;
-        }
-      }
-      if (distIndex === -1) {
-        if (dist < jobData.data[0].dist_min) {
-          distIndex = 0;
-          distRange = `0 - ${jobData.data[0].dist_max} กม.`;
-        } else {
-          distIndex = jobData.data.length - 1;
-          const lastRow = jobData.data[distIndex];
-          distRange = `${lastRow.dist_min}+ กม.`;
-        }
-      }
-    }
+    const oilIndex = findOilRangeIndex(jobData.oil_ranges, applicableOilPrice);
+    const { index: distIndex, range: distRange } = findDistanceRangeIndex(jobData.data, dist);
 
     if (distIndex >= 0 && jobData.data[distIndex]?.prices?.[oilIndex] !== undefined) {
       const price = jobData.data[distIndex].prices[oilIndex];
@@ -216,17 +202,11 @@ export default function Home() {
   const applyOilPriceData = useCallback((data: { price?: number; livePrice?: { price?: number } | null; history?: OilPrice[] }) => {
     if (data.price !== undefined && data.price !== null) {
       setCurrentOilPrice(data.price);
-      if (usingManualPrice) {
-        setOriginalOilPrice(data.price);
-      }
-    }
-    if (data.livePrice && typeof data.livePrice.price === 'number') {
-      // livePrice tracking removed — not displayed in UI
     }
     if (data.history && data.history.length > 0) {
       setOilPriceHistory(data.history);
     }
-  }, [usingManualPrice]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -355,7 +335,7 @@ export default function Home() {
                   else if (diff < 0) { statusEmoji = '🔴'; statusText = `▼ ลดลง ${diff.toFixed(2)}`; statusColor = 'text-red-500'; }
                   else { statusEmoji = '⚪'; statusText = '➖ เท่าเดิม'; statusColor = 'text-gray-500'; }
                 }
-                const isApplicable = !usingManualPrice && applicableOilInfo.mondayDate === item.date;
+                const isApplicable = applicableOilInfo.mondayDate === item.date;
                 const isLatest = index === 0;
                 return (
                   <tr key={item.date} className={`border-b ${isApplicable ? 'bg-emerald-50 font-bold' : ''}`}>
