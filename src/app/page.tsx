@@ -60,8 +60,11 @@ function findDistanceRangeIndex(
   if (dist < data[0].dist_min) {
     return { index: 0, range: `0 - ${data[0].dist_max} กม.` };
   }
-  const lastRow = data[data.length - 1];
-  return { index: data.length - 1, range: `${lastRow.dist_min}+ กม.` };
+  const lastRow = data.at(-1);
+  if (lastRow) {
+    return { index: data.length - 1, range: `${lastRow.dist_min}+ กม.` };
+  }
+  return { index: -1, range: '' };
 }
 
 export default function Home() {
