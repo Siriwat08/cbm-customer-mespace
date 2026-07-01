@@ -155,8 +155,8 @@ export default function Home() {
       return { calculatedPrice: null, priceDetails: null };
     }
 
-    const dist = parseFloat(distance);
-    if (isNaN(dist) || dist <= 0) {
+    const dist = Number.parseFloat(distance);
+    if (Number.isNaN(dist) || dist <= 0) {
       return { calculatedPrice: null, priceDetails: null };
     }
 
@@ -306,8 +306,8 @@ export default function Home() {
   const openPopup = (image: string) => { setPopupImage(image); setShowPopup(true); };
 
   const handleApplyManualPrice = () => {
-    const price = parseFloat(manualPrice);
-    if (isNaN(price) || price <= 0 || price > 200) {
+    const price = Number.parseFloat(manualPrice);
+    if (Number.isNaN(price) || price <= 0 || price > 200) {
       alert('กรุณาใส่ราคาที่ถูกต้อง (0.01 - 200 บาท)');
       return;
     }
@@ -374,9 +374,23 @@ export default function Home() {
               </div>
               <div className="p-4">
                 <div className="flex flex-col sm:flex-row gap-4">
-                  <div className="relative h-48 sm:w-1/2 overflow-hidden rounded-xl cursor-pointer" onClick={() => openPopup(truck.image)}>
+                  <div className="relative h-48 sm:w-1/2 overflow-hidden rounded-xl">
                     <Image src={truck.image} alt={truck.name} fill className="object-cover object-top" style={{ objectPosition: 'top' }} />
-                    <button onClick={(e) => { e.stopPropagation(); openPopup(truck.image); }} className="absolute bottom-2 left-2 bg-white text-blue-600 text-xs px-2 py-1 rounded shadow hover:bg-blue-50">
+                    {/* Stretched button covers entire image area (S6819: use native button instead of clickable div) */}
+                    <button
+                      type="button"
+                      onClick={() => openPopup(truck.image)}
+                      className="absolute inset-0 w-full h-full cursor-pointer bg-transparent border-0 p-0"
+                      aria-label={`ดูภาพรถ ${truck.name}`}
+                    >
+                      <span className="sr-only">ดูภาพรถ {truck.name}</span>
+                    </button>
+                    {/* Popup button rendered on top via z-10 (sibling, not nested — avoids invalid nested button HTML) */}
+                    <button
+                      type="button"
+                      onClick={() => openPopup(truck.image)}
+                      className="absolute bottom-2 left-2 z-10 bg-white text-blue-600 text-xs px-2 py-1 rounded shadow hover:bg-blue-50"
+                    >
                       ดูข้อมูลเพิ่มเติม
                     </button>
                   </div>
@@ -442,24 +456,24 @@ export default function Home() {
                     )}
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                       <div>
-                        <label className="text-xs text-gray-500 font-medium">กว้าง (ซม.) *</label>
-                        <input type="number" value={item.width || ''} onChange={(e) => updateCargoItem(item.id, 'width', parseFloat(e.target.value) || 0)} inputMode="decimal" className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-blue-500 focus:outline-none" placeholder="0" min="0.1" max={CARGO_LIMITS.MAX_DIMENSION_CM} step="0.1" />
+                        <label htmlFor={`cargo-width-${item.id}`} className="text-xs text-gray-500 font-medium">กว้าง (ซม.) *</label>
+                        <input id={`cargo-width-${item.id}`} type="number" value={item.width || ''} onChange={(e) => updateCargoItem(item.id, 'width', Number.parseFloat(e.target.value) || 0)} inputMode="decimal" className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-blue-500 focus:outline-none" placeholder="0" min="0.1" max={CARGO_LIMITS.MAX_DIMENSION_CM} step="0.1" />
                       </div>
                       <div>
-                        <label className="text-xs text-gray-500 font-medium">ยาว (ซม.) *</label>
-                        <input type="number" value={item.length || ''} onChange={(e) => updateCargoItem(item.id, 'length', parseFloat(e.target.value) || 0)} inputMode="decimal" className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-blue-500 focus:outline-none" placeholder="0" min="0.1" max={CARGO_LIMITS.MAX_DIMENSION_CM} step="0.1" />
+                        <label htmlFor={`cargo-length-${item.id}`} className="text-xs text-gray-500 font-medium">ยาว (ซม.) *</label>
+                        <input id={`cargo-length-${item.id}`} type="number" value={item.length || ''} onChange={(e) => updateCargoItem(item.id, 'length', Number.parseFloat(e.target.value) || 0)} inputMode="decimal" className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-blue-500 focus:outline-none" placeholder="0" min="0.1" max={CARGO_LIMITS.MAX_DIMENSION_CM} step="0.1" />
                       </div>
                       <div>
-                        <label className="text-xs text-gray-500 font-medium">สูง (ซม.) *</label>
-                        <input type="number" value={item.height || ''} onChange={(e) => updateCargoItem(item.id, 'height', parseFloat(e.target.value) || 0)} inputMode="decimal" className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-blue-500 focus:outline-none" placeholder="0" min="0.1" max={CARGO_LIMITS.MAX_DIMENSION_CM} step="0.1" />
+                        <label htmlFor={`cargo-height-${item.id}`} className="text-xs text-gray-500 font-medium">สูง (ซม.) *</label>
+                        <input id={`cargo-height-${item.id}`} type="number" value={item.height || ''} onChange={(e) => updateCargoItem(item.id, 'height', Number.parseFloat(e.target.value) || 0)} inputMode="decimal" className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-blue-500 focus:outline-none" placeholder="0" min="0.1" max={CARGO_LIMITS.MAX_DIMENSION_CM} step="0.1" />
                       </div>
                       <div>
-                        <label className="text-xs text-gray-500 font-medium">จำนวน *</label>
-                        <input type="number" value={item.quantity || ''} onChange={(e) => updateCargoItem(item.id, 'quantity', parseInt(e.target.value) || 0)} inputMode="numeric" className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-blue-500 focus:outline-none" placeholder="1" min="1" max={CARGO_LIMITS.MAX_QUANTITY} />
+                        <label htmlFor={`cargo-qty-${item.id}`} className="text-xs text-gray-500 font-medium">จำนวน *</label>
+                        <input id={`cargo-qty-${item.id}`} type="number" value={item.quantity || ''} onChange={(e) => updateCargoItem(item.id, 'quantity', Number.parseInt(e.target.value, 10) || 0)} inputMode="numeric" className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-blue-500 focus:outline-none" placeholder="1" min="1" max={CARGO_LIMITS.MAX_QUANTITY} />
                       </div>
                       <div>
-                        <label className="text-xs text-gray-500 font-medium">น้ำหนัก (kg) *</label>
-                        <input type="number" value={item.weight || ''} onChange={(e) => updateCargoItem(item.id, 'weight', parseFloat(e.target.value) || 0)} inputMode="decimal" className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-blue-500 focus:outline-none" placeholder="0" min="0.1" max={CARGO_LIMITS.MAX_WEIGHT_KG} step="0.1" />
+                        <label htmlFor={`cargo-weight-${item.id}`} className="text-xs text-gray-500 font-medium">น้ำหนัก (kg) *</label>
+                        <input id={`cargo-weight-${item.id}`} type="number" value={item.weight || ''} onChange={(e) => updateCargoItem(item.id, 'weight', Number.parseFloat(e.target.value) || 0)} inputMode="decimal" className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-blue-500 focus:outline-none" placeholder="0" min="0.1" max={CARGO_LIMITS.MAX_WEIGHT_KG} step="0.1" />
                       </div>
                     </div>
                     {item.width > 0 && item.length > 0 && item.height > 0 && (
@@ -698,7 +712,7 @@ export default function Home() {
                   </div>
                 )}
                 <div>
-                  <label className="block text-gray-700 font-medium mb-2">ประเภทงาน</label>
+                  <label htmlFor="job-type" className="block text-gray-700 font-medium mb-2">ประเภทงาน</label>
                   <div className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 bg-gray-50 text-lg text-gray-700">
                     {jobKey}
                   </div>
@@ -707,8 +721,9 @@ export default function Home() {
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-gray-700 font-medium mb-2">วันที่ใช้บริการ <span className="text-red-500">*</span></label>
+                    <label htmlFor="service-date" className="block text-gray-700 font-medium mb-2">วันที่ใช้บริการ <span className="text-red-500">*</span></label>
                     <input
+                      id="service-date"
                       type="date"
                       value={serviceDate}
                       onChange={(e) => setServiceDate(e.target.value)}
@@ -726,8 +741,9 @@ export default function Home() {
                   </div>
 
                   <div>
-                    <label className="block text-gray-700 font-medium mb-2">เวลาที่ใช้บริการ <span className="text-red-500">*</span></label>
+                    <label htmlFor="service-time" className="block text-gray-700 font-medium mb-2">เวลาที่ใช้บริการ <span className="text-red-500">*</span></label>
                     <input
+                      id="service-time"
                       type="time"
                       value={serviceTime}
                       onChange={(e) => setServiceTime(e.target.value)}
@@ -743,9 +759,9 @@ export default function Home() {
                 </div>
 
                 <div>
-                  <label className="block text-gray-700 font-medium mb-2">ระยะทาง <span className="text-red-500">*</span></label>
+                  <label htmlFor="distance-input" className="block text-gray-700 font-medium mb-2">ระยะทาง <span className="text-red-500">*</span></label>
                   <div className="flex items-center gap-2">
-                    <input type="number" value={distance} onChange={(e) => { const val = parseFloat(e.target.value); if (val < 0) return; if (val === 0 && e.target.value.includes('0') && !e.target.value.includes('.')) { setDistance(''); return; } setDistance(e.target.value); }} inputMode="decimal" placeholder="กรอกระยะทาง" className="flex-1 border-2 border-gray-200 rounded-lg px-4 py-3 focus:border-blue-500 focus:outline-none text-lg" min="1" aria-label="ระยะทางเป็นกิโลเมตร" />
+                    <input id="distance-input" type="number" value={distance} onChange={(e) => { const val = Number.parseFloat(e.target.value); if (val < 0) return; if (val === 0 && e.target.value.includes('0') && !e.target.value.includes('.')) { setDistance(''); return; } setDistance(e.target.value); }} inputMode="decimal" placeholder="กรอกระยะทาง" className="flex-1 border-2 border-gray-200 rounded-lg px-4 py-3 focus:border-blue-500 focus:outline-none text-lg" min="1" aria-label="ระยะทางเป็นกิโลเมตร" />
                     <span className="text-gray-600 font-medium">กม.</span>
                   </div>
                 </div>
@@ -846,9 +862,20 @@ export default function Home() {
       </footer>
 
       {showPopup && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setShowPopup(false)}>
-          <div className="relative max-w-3xl w-full" onClick={(e) => e.stopPropagation()}>
-            <button className="absolute -top-10 right-0 text-white text-2xl" onClick={() => setShowPopup(false)}>✕</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop = native <button> (S6848) so it can be clicked to close
+              and supports Escape via onKeyDown */}
+          <button
+            type="button"
+            onClick={() => setShowPopup(false)}
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); setShowPopup(false); } }}
+            className="absolute inset-0 w-full h-full bg-black/70 cursor-default"
+            aria-label="ปิดภาพขยาย"
+            tabIndex={-1}
+          />
+          {/* Inner = non-interactive container with no event listeners (S1082) */}
+          <div className="relative max-w-3xl w-full z-10">
+            <button type="button" className="absolute -top-10 right-0 text-white text-2xl" onClick={() => setShowPopup(false)} aria-label="ปิด">✕</button>
             <img src={popupImage} alt="truck" className="w-full h-auto rounded-lg shadow-2xl" />
           </div>
         </div>

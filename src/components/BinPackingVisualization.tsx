@@ -62,6 +62,7 @@ export default function BinPackingVisualization({ result, truck, cargoItems }: B
     x: number; y: number; z: number;          // visual position (y=0 is back/door)
     w: number; l: number; h: number;           // visual dimensions
     cargoIndex: number; colorIdx: number;
+    itemIndex: number;
     label: string;
     origW: number; origL: number; origH: number;
     depthFromDoor: number; // cm from rear door
@@ -109,6 +110,7 @@ export default function BinPackingVisualization({ result, truck, cargoItems }: B
       h: item.rotatedDimensions.height * scale,
       cargoIndex: item.cargoIndex,
       colorIdx: cIdx,
+      itemIndex: item.itemIndex,
       label: cargoItem ? `รายการ ${item.cargoIndex + 1}` : `ชิ้น ${item.itemIndex + 1}`,
       origW: item.rotatedDimensions.width,
       origL: item.rotatedDimensions.length,
@@ -123,9 +125,7 @@ export default function BinPackingVisualization({ result, truck, cargoItems }: B
   const usedPercent = truckVolume > 0 ? (totalItemsVolume / truckVolume * 100) : 0;
   const freePercent = 100 - usedPercent;
 
-  // Calculate the depth of the deepest item from the door (how far items go into the truck)
-  const deepestItemEnd = placements.reduce((max, p) => Math.max(max, p.y + p.l), 0);
-  const remainingSpaceFromDoor = sL - deepestItemEnd; // This is now the space at the FRONT (cab side)
+  // Space near the door (top of SVG) — used to highlight free area at the rear of the truck.
   const spaceNearDoor = placements.length === 0 ? sL : Math.min(...placements.map(p => p.y));
 
   // ============ SVG RENDERING ============
@@ -193,7 +193,7 @@ export default function BinPackingVisualization({ result, truck, cargoItems }: B
           const x = pad + p.x;
           const y = pad + (sH - p.z - p.h); // SVG y is top-down, z is bottom-up
           return (
-            <g key={idx}>
+            <g key={`rear-${p.cargoIndex}-${p.itemIndex}`}>
               <rect x={x} y={y} width={p.w} height={p.h}
                 fill={color.fill} fillOpacity={opacity}
                 stroke={color.stroke} strokeWidth="1.5" rx="2" />
@@ -277,7 +277,7 @@ export default function BinPackingVisualization({ result, truck, cargoItems }: B
           const heightRatio = p.h / sH;
           const opacity = 0.5 + 0.5 * heightRatio;
           return (
-            <g key={idx}>
+            <g key={`top-${p.cargoIndex}-${p.itemIndex}`}>
               <rect x={pad + p.x} y={pad + p.y} width={p.w} height={p.l}
                 fill={color.fill} fillOpacity={opacity}
                 stroke={color.stroke} strokeWidth="1.5" rx="2" />
@@ -361,7 +361,7 @@ export default function BinPackingVisualization({ result, truck, cargoItems }: B
           const x = pad + p.y; // y=0 is the door (left side)
           const y = pad + (sH - p.z - p.h);
           return (
-            <g key={idx}>
+            <g key={`side-${p.cargoIndex}-${p.itemIndex}`}>
               <rect x={x} y={y} width={p.l} height={p.h}
                 fill={color.fill} fillOpacity={0.75}
                 stroke={color.stroke} strokeWidth="1.5" rx="2" />
@@ -489,9 +489,9 @@ export default function BinPackingVisualization({ result, truck, cargoItems }: B
         <polygon points={rightWallFace} fill="#dbeafe" fillOpacity="0.18" stroke="#2563eb" strokeWidth="1.2" />
         <polygon points={frontWallFace} fill="#e2e8f0" fillOpacity="0.28" stroke="#64748b" strokeWidth="1.2" />
 
-        {/* Truck wireframe */}
-        {truckLines.map(([from, to], idx) => (
-          <line key={idx}
+        {/* Truck wireframe — keys derived from line coordinates (S6479) */}
+        {truckLines.map(([from, to]) => (
+          <line key={`line-${from[0]}x${from[1]}-${to[0]}x${to[1]}`}
             x1={from[0] + offsetX} y1={from[1] + offsetY}
             x2={to[0] + offsetX} y2={to[1] + offsetY}
             stroke="#475569" strokeWidth="1.4" strokeDasharray="5,3" opacity="0.7" />
@@ -547,7 +547,7 @@ export default function BinPackingVisualization({ result, truck, cargoItems }: B
           const shadowRy = Math.max(4, Math.min(w, l) * 0.08);
 
           return (
-            <g key={idx} filter="url(#cargo-soft-shadow)">
+            <g key={`3d-${p.cargoIndex}-${p.itemIndex}`} filter="url(#cargo-soft-shadow)">
               <ellipse
                 cx={shadowPos[0] + offsetX}
                 cy={shadowPos[1] + offsetY + 5}
